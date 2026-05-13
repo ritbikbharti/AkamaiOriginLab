@@ -1,0 +1,43 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Node ${{ matrix.node }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        node: ['20', '22']
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Validate server.js syntax
+        run: node -c server.js
+
+      - name: Validate StackScript bash syntax
+        run: bash -n deploy/linode-stackscript.sh
+
+      - name: StackScript must be ASCII-only (Linode UDF parser is strict)
+        run: |
+          if grep -nP '[^\x00-\x7F]' deploy/linode-stackscript.sh; then
+            echo "::error::Non-ASCII bytes found in deploy/linode-stackscript.sh — Linode's UDF parser will reject this"
+            exit 1
+          fi
+
+      - name: Run server tests
+        run: npm test

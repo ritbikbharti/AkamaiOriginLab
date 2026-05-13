@@ -1,0 +1,15 @@
+{
+  "name": "akamai-origin-lab",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Self-contained origin server for Akamai (and any CDN/WAF) configuration testing.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "PORT=3000 node server.js",
+    "test": "node --test test/server.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cache · Edge Playground</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <header class="app-bar">
+      <div class="app-bar-inner">
+        <a href="/" class="brand">
+          <span class="brand-mark">E</span>
+          <span>Edge Playground<small>Cache &amp; offload</small></span>
+        </a>
+        <nav class="primary">
+          <a href="/">Home</a>
+          <a href="/cdn.html">Cache</a>
+          <a href="/responses.html">Response Status</a>
+          <a href="/akamai.html">Akamai</a>
+          <a href="/cors.html">CORS</a>
+          <a href="/tools.html">Misc</a>
+        </nav>
+        <button id="themeToggle" class="theme-toggle" aria-label="Toggle theme"></button>
+      </div>
+    </header>
+
+    <main>
+      <section class="card">
+        <div class="card-icon cyan">⚡</div>
+        <h2>Cache-Control TTL endpoints</h2>
+        <p>Each endpoint returns a different <code>Cache-Control</code> directive so you can validate cache hits, TTL expiry, and bypass behavior at the edge.</p>
+        <p class="muted" style="font-size:0.9em;">Every call below also sends the Akamai debug <code>Pragma</code> request headers, so when the request transits an Akamai property the response surfaces <code>X-Cache</code>, <code>X-Check-Cacheable</code>, and <code>X-Cache-Key</code>. Hitting the origin directly returns an empty value for these.</p>
+        <div class="grid cols-2">
+          <article class="card">
+            <h3>Short TTL <span class="status-pill">10s</span></h3>
+            <p><code>Cache-Control: public, max-age=10</code></p>
+            <button data-endpoint="/api/cache/short">Call</button>
+            <pre data-out>Click to fetch.</pre>
+          </article>
+
+          <article class="card">
+            <h3>Long TTL <span class="status-pill">1d</span></h3>
+            <p><code>Cache-Control: public, max-age=86400</code></p>
+            <button data-endpoint="/api/cache/long">Call</button>
+            <pre data-out>Click to fetch.</pre>
+          </article>
+
+          <article class="card">
+            <h3>No-store <span class="status-pill warn">bypass</span></h3>
+            <p><code>Cache-Control: private, no-store</code></p>
+            <button data-endpoint="/api/cache/private">Call</button>
+            <pre data-out>Click to fetch.</pre>
+          </article>
+
+          <article class="card">
+            <h3>Conditional GET <span class="status-pill ok">ETag</span></h3>
+            <p>Sends <code>ETag</code> &amp; <code>Last-Modified</code>. Re-call to see <code>304 Not Modified</code>.</p>
+            <button id="etagBtn">Call /api/cache/etag</button>
+            <pre id="etagOut">Click to fetch.</pre>
+          </article>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-icon">📦</div>
+        <h2>Variable-size payloads</h2>
+        <p>Generate JSON responses of arbitrary byte size to benchmark offload, compression, and time-to-first-byte at the edge.</p>
+        <div class="toolbar">
+          <label class="grow" style="margin:0;">
+            Size (bytes, max 5,000,000)
+            <input id="sizeInput" type="number" min="1" max="5000000" value="100000" />
+          </label>
+          <button id="sizeBtn" style="align-self:flex-end;">Fetch payload</button>
+        </div>
+        <pre id="sizeOut">No request yet.</pre>
+      </section>
+
+      <section class="card">
+        <div class="card-icon green">🖼</div>
+        <h2>Image assets</h2>
+        <p>Lightweight SVGs served directly from the origin. Use these to validate Image Manager, prefetch, or simply offload statistics.</p>
+        <div class="gallery">
+          <figure>
+            <img class="hero-img" src="/images/demo-mountains.svg" alt="Mountain landscape" />
+            <figcaption><span>demo-mountains.svg</span><a href="/images/demo-mountains.svg" target="_blank" rel="noopener">open</a></figcaption>
+          </figure>
+          <figure>
+            <img class="hero-img" src="/images/demo-city.svg" alt="City skyline" />
+            <figcaption><span>demo-city.svg</span><a href="/images/demo-city.svg" target="_blank" rel="noopener">open</a></figcaption>
+          </figure>
+          <figure>
+            <img class="hero-img" src="/images/demo-desert.svg" alt="Desert view" />
+            <figcaption><span>demo-desert.svg</span><a href="/images/demo-desert.svg" target="_blank" rel="noopener">open</a></figcaption>
+          </figure>
+          <figure>
+            <img class="hero-img" src="/images/demo-forest.svg" alt="Forest scene" />
+            <figcaption><span>demo-forest.svg</span><a href="/images/demo-forest.svg" target="_blank" rel="noopener">open</a></figcaption>
+          </figure>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <span class="brand-mark">E</span> Edge Demo Playground <span class="footer-sep">·</span> <a href="https://forms.gle/UJ8tnM68pyLeNFBo7" target="_blank" rel="noopener">Feedback / issues / feature requests</a>
+    </footer>
+
+    <script>
+      // Ask Akamai to expose its debug response headers. These pragmas are
+      // honored only when the request transits an Akamai property that has
+      // debug headers permitted; hitting the origin directly is harmless
+      // (the origin ignores them).
+      const AKAMAI_DEBUG_PRAGMA = [
+        'akamai-x-cache-on',
+        'akamai-x-cache-remote-on',
+        'akamai-x-check-cacheable',
+        'akamai-x-get-cache-key',
+        'akamai-x-get-true-cache-key'
+      ].join(', ');
+
+      const AKAMAI_DEBUG_RESPONSE_HEADERS = [
+        'x-cache',
+        'x-cache-remote',
+        'x-check-cacheable',
+        'x-cache-key',
+        'x-true-cache-key'
+      ];
+
+      function showResponse(out, res, body) {
+        const lines = [`HTTP ${res.status} ${res.statusText}`];
+
+        // GRN gets top billing — it's the per-request unique ID used for
+        // support tickets and log correlation.
+        const grnLine = AkamaiDebug.grnLine(res);
+        if (grnLine) lines.push(grnLine);
+
+        const standard = ['cache-control', 'etag', 'last-modified', 'content-type', 'content-length', 'vary', 'date', 'age'];
+        standard.forEach((k) => {
+          const v = res.headers.get(k);
+          if (v) lines.push(`${k}: ${v}`);
+        });
+
+        const debugLines = AKAMAI_DEBUG_RESPONSE_HEADERS
+          .map((k) => [k, res.headers.get(k)])
+          .filter(([, v]) => v != null);
+
+        if (debugLines.length) {
+          lines.push('', '--- Akamai debug headers ---');
+          debugLines.forEach(([k, v]) => lines.push(`${k}: ${v}`));
+        } else {
+          lines.push('', '--- Akamai debug headers ---', '(none — request did not transit an Akamai property, or debug pragma is not permitted)');
+        }
+
+        if (body !== undefined) {
+          lines.push('', typeof body === 'string' ? body : JSON.stringify(body, null, 2));
+        }
+
+        out.textContent = lines.join('\n');
+      }
+
+      document.querySelectorAll('button[data-endpoint]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const url = btn.dataset.endpoint;
+          const out = btn.parentElement.querySelector('[data-out]');
+          out.textContent = 'Loading…';
+          try {
+            const res = await fetch(url, {
+              headers: { Pragma: AKAMAI_DEBUG_PRAGMA },
+              cache: 'no-cache'
+            });
+            const body = await res.json();
+            showResponse(out, res, body);
+          } catch (e) {
+            out.textContent = `Error: ${e.message}`;
+          }
+        });
+      });
+
+      let lastEtag = null;
+      let lastModified = null;
+      document.getElementById('etagBtn').addEventListener('click', async () => {
+        const out = document.getElementById('etagOut');
+        out.textContent = 'Loading…';
+        try {
+          const headers = { Pragma: AKAMAI_DEBUG_PRAGMA };
+          if (lastEtag) headers['If-None-Match'] = lastEtag;
+          if (lastModified) headers['If-Modified-Since'] = lastModified;
+          const res = await fetch('/api/cache/etag', { headers, cache: 'no-cache' });
+          if (res.headers.get('etag')) lastEtag = res.headers.get('etag');
+          if (res.headers.get('last-modified')) lastModified = res.headers.get('last-modified');
+          let body;
+          if (res.status === 304) body = '(no body — 304 Not Modified)';
+          else body = await res.json();
+          showResponse(out, res, body);
+        } catch (e) {
+          out.textContent = `Error: ${e.message}`;
+        }
+      });
+
+      document.getElementById('sizeBtn').addEventListener('click', async () => {
+        const out = document.getElementById('sizeOut');
+        const bytes = document.getElementById('sizeInput').value || '100000';
+        out.textContent = 'Loading…';
+        const t0 = performance.now();
+        try {
+          const res = await fetch(`/api/size?bytes=${encodeURIComponent(bytes)}`, {
+            headers: { Pragma: AKAMAI_DEBUG_PRAGMA },
+            cache: 'no-cache'
+          });
+          const buf = await res.arrayBuffer();
+          const ms = (performance.now() - t0).toFixed(1);
+
+          const debug = AKAMAI_DEBUG_RESPONSE_HEADERS
+            .map((k) => [k, res.headers.get(k)])
+            .filter(([, v]) => v != null);
+
+          const grnLine = AkamaiDebug.grnLine(res);
+
+          out.textContent =
+            `HTTP ${res.status} ${res.statusText}\n` +
+            (grnLine ? grnLine + '\n' : '') +
+            `content-type: ${res.headers.get('content-type')}\n` +
+            `content-length: ${res.headers.get('content-length')}\n` +
+            `cache-control: ${res.headers.get('cache-control')}\n` +
+            (debug.length
+              ? '\n--- Akamai debug headers ---\n' + debug.map(([k, v]) => `${k}: ${v}`).join('\n') + '\n'
+              : '\n--- Akamai debug headers ---\n(none — request did not transit an Akamai property)\n') +
+            `\nReceived ${buf.byteLength.toLocaleString()} bytes in ${ms} ms`;
+        } catch (e) {
+          out.textContent = `Error: ${e.message}`;
+        }
+      });
+    </script>
+  </body>
+</html>

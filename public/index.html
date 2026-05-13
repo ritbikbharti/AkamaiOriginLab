@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Edge Demo Playground — a self-contained origin for testing Akamai CDN configurations." />
+    <title>Edge Demo Playground</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' x2='1' y1='0' y2='1'%3E%3Cstop offset='0%25' stop-color='%234f46e5'/%3E%3Cstop offset='100%25' stop-color='%2306b6d4'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='14' fill='url(%23g)'/%3E%3Ctext x='32' y='42' text-anchor='middle' font-family='Inter,Arial' font-weight='800' font-size='30' fill='white'%3EE%3C/text%3E%3C/svg%3E" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <header class="app-bar">
+      <div class="app-bar-inner">
+        <a href="/" class="brand">
+          <span class="brand-mark">E</span>
+          <span>Edge Playground<small>Origin for Akamai Testing</small></span>
+        </a>
+        <nav class="primary">
+          <a href="/">Home</a>
+          <a href="/cdn.html">Cache</a>
+          <a href="/responses.html">Response Status</a>
+          <a href="/akamai.html">Akamai</a>
+          <a href="/cors.html">CORS</a>
+          <a href="/tools.html">Misc</a>
+        </nav>
+        <button id="themeToggle" class="theme-toggle" aria-label="Toggle theme"></button>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="hero-bg-grid"></div>
+        <h1>An origin built for edge testing.</h1>
+        <p>
+          A self-contained playground for validating Akamai property configurations — cache behavior, response status forcing,
+          CORS rules, EdgeScape geo, true-client-ip propagation, and more. Everything runs locally; no third-party dependencies.
+        </p>
+        <div class="hero-meta">
+          <span class="pill">Cache TTL endpoints</span>
+          <span class="pill">ETag / 304 demo</span>
+          <span class="pill">Pragma debug headers</span>
+          <span class="pill">EdgeScape geo</span>
+          <span class="pill">Status forcing</span>
+          <span class="pill">Variable payload sizes</span>
+        </div>
+        <div class="hero-cta">
+          <a class="button-link on-hero" href="/cdn.html">Explore cache tools →</a>
+          <a class="button-link on-hero ghost" href="/akamai.html">Akamai-specific page</a>
+        </div>
+      </section>
+
+      <div class="section-title"><h2>Origin status</h2><span class="hint"><span class="kpi-pulse"></span>refreshes every 2 min</span></div>
+      <section class="kpi-row">
+        <article class="card kpi">
+          <div class="kpi-label">Uptime</div>
+          <div class="kpi-value" id="kpiUptime">—</div>
+          <div class="kpi-sub" id="kpiStarted">since —</div>
+        </article>
+        <article class="card kpi">
+          <div class="kpi-label">Requests served</div>
+          <div class="kpi-value" id="kpiReqs">—</div>
+          <div class="kpi-sub">total since boot</div>
+        </article>
+        <article class="card kpi">
+          <div class="kpi-label">Node</div>
+          <div class="kpi-value" id="kpiNode">—</div>
+          <div class="kpi-sub" id="kpiPlatform">—</div>
+        </article>
+        <article class="card kpi">
+          <div class="kpi-label">Hostname</div>
+          <div class="kpi-value" id="kpiHost">—</div>
+          <div class="kpi-sub" id="kpiMem">—</div>
+        </article>
+      </section>
+
+      <div class="section-title"><h2>Test areas</h2><span class="hint">jump into a focused tool</span></div>
+
+      <section class="grid cols-2">
+        <a class="card linkable" href="/cdn.html">
+          <div class="card-icon cyan">⚡</div>
+          <h3>Cache &amp; offload</h3>
+          <p>Endpoints with explicit Cache-Control TTLs, conditional GET via ETag, and image assets to validate cache hits, TTL expiry, and revalidation flows.</p>
+          <div class="chip-row">
+            <span class="chip cyan">max-age</span>
+            <span class="chip cyan">ETag</span>
+            <span class="chip cyan">304</span>
+          </div>
+        </a>
+
+        <a class="card linkable" href="/responses.html">
+          <div class="card-icon amber">⚙</div>
+          <h3>Response status forcing</h3>
+          <p>Force any response status from <code>100</code> to <code>599</code> via a request header. Inspect what your edge config rewrote, dropped, or added.</p>
+          <div class="chip-row">
+            <span class="chip amber">x-demo-status</span>
+            <span class="chip amber">echo headers</span>
+          </div>
+        </a>
+
+        <a class="card linkable" href="/akamai.html">
+          <div class="card-icon">A</div>
+          <h3>Akamai specifics</h3>
+          <p>Pragma debug headers, EdgeScape geo decoding, true-client-ip extraction, and surrogate cache control — see exactly what reaches your origin.</p>
+          <div class="chip-row">
+            <span class="chip">Pragma</span>
+            <span class="chip">EdgeScape</span>
+            <span class="chip">true-client-ip</span>
+          </div>
+        </a>
+
+        <a class="card linkable" href="/cors.html">
+          <div class="card-icon amber">⇄</div>
+          <h3>CORS tester</h3>
+          <p>Configure exactly which <code>Access-Control-*</code> headers origin returns, fire a request, and watch the browser's verdict. Quick scenarios cover wildcard, credentials-with-wildcard, preflight rejection, and exposed headers.</p>
+          <div class="chip-row">
+            <span class="chip amber">preflight</span>
+            <span class="chip amber">credentials</span>
+            <span class="chip amber">expose-headers</span>
+          </div>
+        </a>
+
+        <a class="card linkable" href="/tools.html">
+          <div class="card-icon green">🧰</div>
+          <h3>Misc tests</h3>
+          <p>Slow responses, redirect chains, <code>Vary</code> by language, cookies, compression, server-sent events, and a live request log of everything hitting this origin.</p>
+          <div class="chip-row">
+            <span class="chip green">slow</span>
+            <span class="chip green">Vary</span>
+            <span class="chip green">live log</span>
+          </div>
+        </a>
+      </section>
+
+      <div class="section-title"><h2>Image gallery</h2><span class="hint">cache-friendly SVGs for offload tests</span></div>
+      <section class="card">
+        <div class="gallery">
+          <figure>
+            <img class="hero-img" src="/images/demo-mountains.svg" alt="Mountain landscape" />
+            <figcaption><span>demo-mountains.svg</span><span>SVG · ~0.8 KB</span></figcaption>
+          </figure>
+          <figure>
+            <img class="hero-img" src="/images/demo-city.svg" alt="City skyline" />
+            <figcaption><span>demo-city.svg</span><span>SVG · ~0.9 KB</span></figcaption>
+          </figure>
+          <figure>
+            <img class="hero-img" src="/images/demo-desert.svg" alt="Desert view" />
+            <figcaption><span>demo-desert.svg</span><span>SVG · ~0.7 KB</span></figcaption>
+          </figure>
+          <figure>
+            <img class="hero-img" src="/images/demo-forest.svg" alt="Forest scene" />
+            <figcaption><span>demo-forest.svg</span><span>SVG · ~0.8 KB</span></figcaption>
+          </figure>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <span class="brand-mark">E</span> Edge Demo Playground
+      <span class="footer-sep">·</span>
+      <a href="https://forms.gle/UJ8tnM68pyLeNFBo7" target="_blank" rel="noopener">Feedback / issues / feature requests</a>
+    </footer>
+
+    <script>
+      function fmtUptime(s) {
+        const d = Math.floor(s / 86400);
+        const h = Math.floor((s % 86400) / 3600);
+        const m = Math.floor((s % 3600) / 60);
+        const sec = s % 60;
+        if (d) return `${d}d ${h}h ${m}m`;
+        if (h) return `${h}h ${m}m ${sec}s`;
+        if (m) return `${m}m ${sec}s`;
+        return `${sec}s`;
+      }
+      async function loadOrigin() {
+        try {
+          const res = await fetch('/api/origin', { cache: 'no-cache' });
+          const d = await res.json();
+          document.getElementById('kpiUptime').textContent = fmtUptime(d.uptimeSeconds);
+          document.getElementById('kpiStarted').textContent = `since ${new Date(d.startedAt).toLocaleString()}`;
+          document.getElementById('kpiReqs').textContent = d.totalRequests.toLocaleString();
+          document.getElementById('kpiNode').textContent = d.nodeVersion;
+          document.getElementById('kpiPlatform').textContent = `${d.platform} · ${d.arch}`;
+          document.getElementById('kpiHost').textContent = d.hostname;
+          document.getElementById('kpiMem').textContent = `RSS ${d.memoryRssMB} MB · pid ${d.pid}`;
+        } catch {}
+      }
+      loadOrigin();
+      setInterval(() => { if (!document.hidden) loadOrigin(); }, 120000);
+    </script>
+  </body>
+</html>

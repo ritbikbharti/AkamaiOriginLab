@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">Demo City</title>
+  <desc id="desc">Stylized city skyline at dusk.</desc>
+  <defs>
+    <linearGradient id="night" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1f2a44"/>
+      <stop offset="100%" stop-color="#3a506b"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#night)"/>
+  <rect x="100" y="280" width="120" height="300" fill="#0b132b"/>
+  <rect x="260" y="230" width="170" height="350" fill="#1c2541"/>
+  <rect x="470" y="170" width="140" height="410" fill="#0b132b"/>
+  <rect x="650" y="260" width="170" height="320" fill="#1c2541"/>
+  <rect x="860" y="200" width="130" height="380" fill="#0b132b"/>
+  <rect x="1040" y="250" width="140" height="330" fill="#1c2541"/>
+  <rect y="580" width="1280" height="140" fill="#5bc0be" opacity="0.25"/>
+</svg>

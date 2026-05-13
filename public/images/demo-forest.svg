@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">Demo Forest</title>
+  <desc id="desc">Minimal pine forest illustration.</desc>
+  <defs>
+    <linearGradient id="morning" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#a8edea"/>
+      <stop offset="100%" stop-color="#fed6e3"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#morning)"/>
+  <rect y="560" width="1280" height="160" fill="#588157"/>
+  <g fill="#3a5a40">
+    <polygon points="180,560 250,360 320,560"/>
+    <polygon points="320,560 400,310 480,560"/>
+    <polygon points="500,560 590,320 680,560"/>
+    <polygon points="700,560 790,300 880,560"/>
+    <polygon points="890,560 980,340 1070,560"/>
+  </g>
+</svg>

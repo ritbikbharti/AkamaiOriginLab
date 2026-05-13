@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Akamai · Edge Playground</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <header class="app-bar">
+      <div class="app-bar-inner">
+        <a href="/" class="brand">
+          <span class="brand-mark">E</span>
+          <span>Edge Playground<small>Akamai-specific tools</small></span>
+        </a>
+        <nav class="primary">
+          <a href="/">Home</a>
+          <a href="/cdn.html">Cache</a>
+          <a href="/responses.html">Response Status</a>
+          <a href="/akamai.html">Akamai</a>
+          <a href="/cors.html">CORS</a>
+          <a href="/tools.html">Misc</a>
+        </nav>
+        <button id="themeToggle" class="theme-toggle" aria-label="Toggle theme"></button>
+      </div>
+    </header>
+
+    <main>
+      <section class="card">
+        <div class="card-icon">A</div>
+        <h2>Akamai diagnostics on the origin</h2>
+        <p>This origin parses Akamai-specific request headers and reports what it received. Use these tools to confirm forwarding of <code>True-Client-IP</code>, <code>X-Akamai-Edgescape</code>, and <code>Pragma</code> debug directives.</p>
+      </section>
+
+      <section class="grid cols-2">
+        <article class="card">
+          <h3>Client identity <span class="status-pill">incoming</span></h3>
+          <p>Reads <code>True-Client-IP</code>, <code>X-Forwarded-For</code>, and <code>Akamai-Client-IP</code> as seen by the origin.</p>
+          <button id="clientBtn">GET /api/akamai/client</button>
+          <pre id="clientOut">Click to fetch.</pre>
+        </article>
+
+        <article class="card">
+          <h3>EdgeScape geo <span class="status-pill">decoded</span></h3>
+          <p>Parses <code>X-Akamai-Edgescape</code> into a structured object (country, region, city, asnum, lat/long, etc.).</p>
+          <button id="geoBtn">GET /api/akamai/geo</button>
+          <pre id="geoOut">Click to fetch.</pre>
+        </article>
+
+        <article class="card">
+          <h3>Pragma debug request</h3>
+          <p>Send Akamai Pragma debug directives. Edge will return <code>X-Cache</code>, <code>X-Cache-Key</code>, <code>X-Check-Cacheable</code>, etc. as response headers.</p>
+          <div class="chip-row">
+            <span class="chip">akamai-x-cache-on</span>
+            <span class="chip">akamai-x-cache-remote-on</span>
+            <span class="chip">akamai-x-get-cache-key</span>
+            <span class="chip">akamai-x-get-true-cache-key</span>
+            <span class="chip">akamai-x-check-cacheable</span>
+            <span class="chip">akamai-x-get-extracted-values</span>
+          </div>
+          <div style="margin-top: 0.7rem;"><button id="pragmaBtn">Send pragma debug request</button></div>
+          <pre id="pragmaOut">No request yet.</pre>
+        </article>
+
+        <article class="card">
+          <h3>Surrogate-Control <span class="status-pill ok">edge-only TTL</span></h3>
+          <p>Returns <code>Surrogate-Control: max-age=300</code> alongside <code>Cache-Control: no-store</code>. Edge caches for 5 minutes; browser does not.</p>
+          <button id="surrogateBtn">GET /api/cache/surrogate</button>
+          <pre id="surrogateOut">Click to fetch.</pre>
+        </article>
+      </section>
+
+      <section class="card">
+        <div class="card-icon green">📋</div>
+        <h2>Reference: Akamai request headers</h2>
+        <dl class="kv">
+          <dt>True-Client-IP</dt><dd>Original client IP, when "True Client IP Header" behavior is enabled.</dd>
+          <dt>X-Forwarded-For</dt><dd>Standard chain of forwarded IPs; Akamai appends the edge IP.</dd>
+          <dt>X-Akamai-Edgescape</dt><dd>Comma-separated geo / network attributes (e.g. <code>country_code=US,region_code=CA,city=SANJOSE,...</code>).</dd>
+          <dt>Pragma</dt><dd>Debug directives such as <code>akamai-x-cache-on, akamai-x-get-cache-key</code>.</dd>
+          <dt>Akamai-Origin-Hop</dt><dd>Number of Akamai hops the request has traversed.</dd>
+          <dt>Via</dt><dd>Proxy chain identifier; contains <code>AkamaiGHost</code> for traffic via Akamai.</dd>
+        </dl>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <span class="brand-mark">E</span> Edge Demo Playground <span class="footer-sep">·</span> <a href="https://forms.gle/UJ8tnM68pyLeNFBo7" target="_blank" rel="noopener">Feedback / issues / feature requests</a>
+    </footer>
+
+    <script>
+      async function callJson(url, out) {
+        out.textContent = 'Loading…';
+        try {
+          const res = await fetch(url, { cache: 'no-cache' });
+          const body = await res.json();
+          const headers = Object.fromEntries(res.headers.entries());
+          const grnLine = AkamaiDebug.grnLine(res);
+          out.textContent =
+            `HTTP ${res.status} ${res.statusText}\n` +
+            (grnLine ? grnLine + '\n' : '') +
+            `--- response headers ---\n` +
+            Object.entries(headers).map(([k, v]) => `${k}: ${v}`).join('\n') +
+            `\n\n--- body ---\n` + JSON.stringify(body, null, 2);
+        } catch (e) {
+          out.textContent = `Error: ${e.message}`;
+        }
+      }
+
+      document.getElementById('clientBtn').addEventListener('click', () => callJson('/api/akamai/client', document.getElementById('clientOut')));
+      document.getElementById('geoBtn').addEventListener('click', () => callJson('/api/akamai/geo', document.getElementById('geoOut')));
+      document.getElementById('surrogateBtn').addEventListener('click', () => callJson('/api/cache/surrogate', document.getElementById('surrogateOut')));
+
+      document.getElementById('pragmaBtn').addEventListener('click', async () => {
+        const out = document.getElementById('pragmaOut');
+        out.textContent = 'Loading…';
+        const pragma = [
+          'akamai-x-cache-on',
+          'akamai-x-cache-remote-on',
+          'akamai-x-get-cache-key',
+          'akamai-x-get-true-cache-key',
+          'akamai-x-check-cacheable',
+          'akamai-x-get-extracted-values'
+        ].join(', ');
+        try {
+          const res = await fetch('/api/akamai/pragma', { headers: { Pragma: pragma }, cache: 'no-cache' });
+          const body = await res.json();
+          const headers = Object.fromEntries(res.headers.entries());
+          const grnLine = AkamaiDebug.grnLine(res);
+          out.textContent =
+            `Sent Pragma: ${pragma}\n\n` +
+            `HTTP ${res.status} ${res.statusText}\n` +
+            (grnLine ? grnLine + '\n' : '') +
+            `--- response headers ---\n` +
+            Object.entries(headers).map(([k, v]) => `${k}: ${v}`).join('\n') +
+            `\n\n--- body ---\n` + JSON.stringify(body, null, 2) +
+            `\n\nWhen this origin sits behind Akamai with debug auth, the edge replaces these response headers with X-Cache, X-Cache-Key, X-Check-Cacheable, etc.`;
+        } catch (e) {
+          out.textContent = `Error: ${e.message}`;
+        }
+      });
+    </script>
+  </body>
+</html>

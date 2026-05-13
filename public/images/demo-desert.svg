@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">Demo Desert</title>
+  <desc id="desc">Warm desert dunes under an orange sunset.</desc>
+  <defs>
+    <linearGradient id="sunset" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ff9a8b"/>
+      <stop offset="100%" stop-color="#ffecd2"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#sunset)"/>
+  <circle cx="220" cy="170" r="90" fill="#ffd166"/>
+  <path d="M0 520 C200 450 320 580 540 520 C760 460 930 580 1280 510 L1280 720 L0 720 Z" fill="#f4a261"/>
+  <path d="M0 590 C170 520 390 650 620 580 C830 530 1000 640 1280 580 L1280 720 L0 720 Z" fill="#e76f51" opacity="0.8"/>
+</svg>
