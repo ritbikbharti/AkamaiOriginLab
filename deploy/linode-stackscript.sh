@@ -122,7 +122,13 @@ WorkingDirectory=/opt/AkamaiOriginLab
 Environment=PORT=3000
 ExecStart=${NODE_BIN} server.js
 Restart=on-failure
-RestartSec=5
+RestartSec=2
+# Make sure systemctl restart actually frees port 3000 before relaunching:
+# send SIGTERM to the main process, SIGKILL the rest of the cgroup after 5s.
+# Without this, restarts can race and hit EADDRINUSE.
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=5
 
 [Install]
 WantedBy=multi-user.target

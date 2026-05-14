@@ -4,3 +4,7 @@ npm-debug.log*
 .env
 .env.local
 *.log
+
+# Local-only project memory and session handoff notes — never committed since this repo is public.
+CLAUDE.md
+HANDOFF.md
