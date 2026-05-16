@@ -527,7 +527,7 @@ const server = http.createServer(async (req, res) => {
       const value = typeof body.value === 'string' ? body.value : 'hello';
       const maxAgeRaw = Number.parseInt(body.maxAge, 10);
       const maxAge = Number.isFinite(maxAgeRaw) && maxAgeRaw >= 0 ? maxAgeRaw : 3600;
-      const safeName = name.replace(/[^A-Za-z0-9_\-]/g, '');
+      const safeName = name.replace(/[^A-Za-z0-9_\-]/g, '') || 'demo';
       const cookie = `${safeName}=${encodeURIComponent(value)}; Max-Age=${maxAge}; Path=/; SameSite=Lax`;
       sendJson(res, 200, { setCookie: cookie }, { 'Set-Cookie': cookie, 'Cache-Control': 'no-store' });
     } catch (error) {
@@ -604,7 +604,7 @@ const server = http.createServer(async (req, res) => {
     filePath = path.join(PUBLIC_DIR, pathname);
   }
 
-  if (!filePath.startsWith(PUBLIC_DIR)) { sendJson(res, 403, { error: 'Forbidden' }); return; }
+  if (!filePath.startsWith(PUBLIC_DIR + path.sep)) { sendJson(res, 403, { error: 'Forbidden' }); return; }
 
   fs.stat(filePath, (err, stats) => {
     if (!err && stats.isFile()) { serveFile(res, filePath); return; }
