@@ -509,11 +509,12 @@ main { counter-reset: section; }
   height: 38px;
   display: grid;
   place-items: center;
-  font-size: 1.05rem;
+  font-family: var(--font-mono);
+  font-size: 1.15rem;
+  font-weight: 400;
   border: 1px solid var(--border-strong);
   background: var(--bg);
   margin-bottom: 0.8rem;
-  filter: grayscale(1) contrast(1.1);
 }
 .card-icon.cyan { border-color: var(--info); color: var(--info); }
 .card-icon.amber { border-color: var(--warn); color: var(--warn); }
