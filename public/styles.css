@@ -563,6 +563,44 @@ button.ghost.chip, .chip-row button { font-size: 0.7rem; padding: 0.3rem 0.6rem;
 .status-pill.ok { color: var(--ok); }
 .status-pill.warn { color: var(--warn); }
 
+/* CORS scenario cards & verdict (cors.html) */
+.card.scenario { display: flex; flex-direction: column; }
+.scenario-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: auto;
+  padding-top: 0.8rem;
+}
+.verdict-line {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 2.1rem;
+  line-height: 1.1;
+  margin: 0.3rem 0 0.6rem;
+}
+.verdict-line.ok { color: var(--ok); }
+.verdict-line.blocked { color: var(--danger); }
+.fix-line {
+  border-left: 3px solid var(--accent);
+  background: var(--surface-2);
+  color: var(--text);
+  padding: 0.45rem 0.75rem;
+}
+.verdict-detail summary {
+  cursor: pointer;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--text-faint);
+  margin-top: 0.9rem;
+}
+.card.scenario.active {
+  border-color: var(--border-strong);
+  box-shadow: 4px 4px 0 var(--accent);
+}
+
 /* --------------------------------------------------------------------------
    KPI tiles
    -------------------------------------------------------------------------- */

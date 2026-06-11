@@ -29,91 +29,22 @@
     <main>
       <section class="card">
         <div class="card-icon amber">⇄</div>
-        <h2>CORS tester</h2>
-        <p>Configure exactly which <code>Access-Control-*</code> headers the origin returns, then fire a request and watch the browser's verdict. Each scenario teaches a different way CORS fails — and what header fixes it. The fetch from this page is same-origin by default; for genuine cross-origin testing use the curl snippet at the bottom from a different host.</p>
-
-        <div class="chip-row">
-          <button class="ghost" type="button" data-scenario="permissive">Permissive (wildcard)</button>
-          <button class="ghost" type="button" data-scenario="creds-wildcard">Credentials + wildcard (broken)</button>
-          <button class="ghost" type="button" data-scenario="creds-explicit">Credentials + explicit origin</button>
-          <button class="ghost" type="button" data-scenario="preflight-block">Preflight blocked (missing method)</button>
-          <button class="ghost" type="button" data-scenario="preflight-ok">Preflight succeeds</button>
-          <button class="ghost" type="button" data-scenario="expose">Expose custom header</button>
-          <button class="ghost" type="button" data-scenario="none">No CORS headers</button>
-        </div>
+        <h2>CORS, scenario by scenario</h2>
+        <p>Each card below is a real cross-origin situation. Hit <strong>Run test</strong> and the request fires from a hidden sandboxed iframe whose origin is <code>null</code> — so your browser enforces CORS exactly as it would on a real cross-site call. No setup, no second domain needed.</p>
+        <p class="muted">The verdict tells you in plain language what the server sent back, why the browser allowed or blocked it, and — when it fails — what header would fix it.</p>
       </section>
 
-      <section class="grid cols-2">
-        <article class="card">
-          <h3>1 · Origin's CORS response</h3>
-          <p class="muted" style="font-size:0.9em;">Leave a field blank to omit that header entirely.</p>
+      <section class="grid cols-2" id="scenarioGrid"></section>
 
-          <label for="allowOrigin">Access-Control-Allow-Origin</label>
-          <input id="allowOrigin" placeholder="* or https://example.com or null" />
-
-          <label for="allowMethods">Access-Control-Allow-Methods</label>
-          <input id="allowMethods" placeholder="GET,POST,DELETE" />
-
-          <label for="allowHeaders">Access-Control-Allow-Headers</label>
-          <input id="allowHeaders" placeholder="content-type,authorization,x-custom" />
-
-          <label for="exposeHeaders">Access-Control-Expose-Headers</label>
-          <input id="exposeHeaders" placeholder="etag,x-cache,x-akamai-request-id" />
-
-          <label for="maxAge">Access-Control-Max-Age (preflight cache, seconds)</label>
-          <input id="maxAge" type="number" min="0" max="86400" placeholder="3600" />
-
-          <label for="responseStatus">Response status</label>
-          <input id="responseStatus" type="number" min="100" max="599" value="200" />
-
-          <div style="margin-top: 0.6rem; display: flex; gap: 1rem; flex-wrap: wrap;">
-            <label class="inline"><input id="allowCreds" type="checkbox" /> Access-Control-Allow-Credentials: true</label>
-            <label class="inline"><input id="varyOrigin" type="checkbox" /> Add <code>Vary: Origin</code></label>
-          </div>
-        </article>
-
-        <article class="card">
-          <h3>2 · Browser's request</h3>
-
-          <label for="targetUrl">Target URL</label>
-          <input id="targetUrl" value="/api/cors" />
-          <p class="muted" style="font-size:0.85em; margin-top: 0.2rem;">Relative → same-origin (no preflight, no enforcement). Absolute URL to a different host → real cross-origin.</p>
-
-          <label for="reqMethod">Method</label>
-          <select id="reqMethod">
-            <option value="GET" selected>GET</option>
-            <option value="POST">POST</option>
-            <option value="PUT">PUT</option>
-            <option value="DELETE">DELETE</option>
-            <option value="PATCH">PATCH</option>
-          </select>
-
-          <label for="reqHeaders">Custom request headers (one per line, <code>Name: value</code>)</label>
-          <textarea id="reqHeaders" rows="3" placeholder="X-Custom: hello&#10;Content-Type: application/json"></textarea>
-
-          <label for="reqBody">Request body (POST/PUT/PATCH)</label>
-          <textarea id="reqBody" rows="2" placeholder='{"hello":"world"}'></textarea>
-
-          <label class="inline" style="margin-top: 0.6rem;"><input id="withCreds" type="checkbox" /> Send with credentials (cookies, auth)</label>
-          <label class="inline" style="margin-top: 0.4rem;"><input id="forceCross" type="checkbox" checked /> Force cross-origin enforcement (sandboxed iframe, <code>Origin: null</code>)</label>
-          <p class="muted" style="font-size:0.85em; margin-top: 0.2rem;">When checked, the fetch runs inside a sandboxed iframe whose origin is <code>null</code>. The browser enforces CORS exactly as it would for a real cross-origin request, so blocks are visible. With wildcard / credentials / preflight scenarios the matching <code>Allow-Origin</code> value for null-origin requests is either <code>*</code> or the literal string <code>null</code>.</p>
-
-          <div style="margin-top: 0.8rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
-            <button id="sendBtn">Send request</button>
-            <button class="ghost" id="clearBtn" type="button">Clear</button>
-          </div>
-        </article>
-      </section>
-
-      <section class="card">
-        <h3>3 · Result</h3>
-        <pre id="resultOut">Configure a scenario above and hit Send.</pre>
-      </section>
-
-      <section class="card">
-        <h3>4 · Curl equivalent (for cross-origin testing)</h3>
-        <p class="muted" style="font-size:0.9em;">Live-generated curl for paste-and-run testing outside the browser. The page's "Force cross-origin" mode covers it inside the browser; this snippet is useful for scripting / CI / quick comparisons.</p>
-        <pre id="curlOut">(updates as you configure above)</pre>
+      <section class="card" id="verdictCard" hidden>
+        <h3>Result <span class="status-pill" id="verdictScenario"></span></h3>
+        <div class="verdict-line" id="verdictHead"></div>
+        <div id="verdictExplain"></div>
+        <details class="verdict-detail">
+          <summary>Response headers + curl reproduction</summary>
+          <pre id="headersOut"></pre>
+          <pre id="curlOut"></pre>
+        </details>
       </section>
     </main>
 
@@ -123,123 +54,100 @@
 
     <script>
       const $ = (id) => document.getElementById(id);
-      const fields = ['allowOrigin','allowMethods','allowHeaders','exposeHeaders','maxAge','responseStatus','allowCreds','varyOrigin','targetUrl','reqMethod','reqHeaders','reqBody','withCreds','forceCross'];
 
-      function applyScenario(name) {
-        const set = (id, v) => { $(id).value = v; };
-        const check = (id, v) => { $(id).checked = !!v; };
-        // reset everything first
-        ['allowOrigin','allowMethods','allowHeaders','exposeHeaders','maxAge','reqHeaders','reqBody'].forEach((id) => set(id, ''));
-        check('allowCreds', false); check('varyOrigin', false); check('withCreds', false);
-        set('responseStatus', 200); set('reqMethod', 'GET'); set('targetUrl', '/api/cors');
+      const PARAM_TO_HEADER = {
+        allow_origin: 'Access-Control-Allow-Origin',
+        allow_methods: 'Access-Control-Allow-Methods',
+        allow_headers: 'Access-Control-Allow-Headers',
+        allow_credentials: 'Access-Control-Allow-Credentials',
+        expose_headers: 'Access-Control-Expose-Headers',
+        max_age: 'Access-Control-Max-Age',
+        vary_origin: 'Vary'
+      };
 
-        switch (name) {
-          case 'permissive':
-            set('allowOrigin', '*');
-            set('allowMethods', 'GET,POST');
-            check('varyOrigin', true);
-            break;
-          case 'creds-wildcard':
-            // Classic bug — browser will refuse: wildcard + credentials is invalid
-            set('allowOrigin', '*');
-            check('allowCreds', true);
-            check('withCreds', true);
-            break;
-          case 'creds-explicit':
-            // Correct form: explicit origin echoes back; must also have Vary: Origin.
-            // When cross-origin mode is on, the iframe's origin is "null", so the
-            // matching Allow-Origin value is the literal string "null".
-            set('allowOrigin', $('forceCross').checked ? 'null' : window.location.origin);
-            check('allowCreds', true);
-            check('varyOrigin', true);
-            check('withCreds', true);
-            break;
-          case 'preflight-block':
-            // Send a POST with a custom header but origin only allows GET
-            set('allowOrigin', '*');
-            set('allowMethods', 'GET');
-            set('reqMethod', 'POST');
-            set('reqHeaders', 'Content-Type: application/json\nX-Custom: foo');
-            set('reqBody', '{"hello":"world"}');
-            break;
-          case 'preflight-ok':
-            set('allowOrigin', '*');
-            set('allowMethods', 'GET,POST,PUT,DELETE');
-            set('allowHeaders', 'content-type,x-custom');
-            set('maxAge', '3600');
-            set('reqMethod', 'POST');
-            set('reqHeaders', 'Content-Type: application/json\nX-Custom: foo');
-            set('reqBody', '{"hello":"world"}');
-            break;
-          case 'expose':
-            set('allowOrigin', '*');
-            set('exposeHeaders', 'x-akamai-request-id,etag,x-cache');
-            break;
-          case 'none':
-            // Nothing — origin sends no CORS headers at all
-            break;
+      const SCENARIOS = [
+        {
+          id: 'none',
+          title: 'Server sends no CORS headers',
+          desc: 'You call an API that was never set up for browser use. It answers, but says nothing about who may read the response.',
+          expect: 'block',
+          params: {},
+          request: { method: 'GET' },
+          why: 'The response carried no Access-Control-Allow-Origin header at all. The server really did reply (the curl below proves it) — but the browser refused to hand the body to JavaScript.',
+          fix: 'The server must send Access-Control-Allow-Origin: either the calling origin, or * if the data is public.'
+        },
+        {
+          id: 'wildcard',
+          title: 'Wildcard — allow everyone',
+          desc: 'The server marks the response as public: any website may read it. The simplest working CORS setup.',
+          expect: 'allow',
+          params: { allow_origin: '*' },
+          request: { method: 'GET' },
+          why: 'Access-Control-Allow-Origin: * matches every origin, including our sandboxed "null" one. Fine for public, non-credentialed data.'
+        },
+        {
+          id: 'wrong-origin',
+          title: 'A different site is allowed — not yours',
+          desc: 'The server does send CORS headers, but the allowed origin does not match the site making the call.',
+          expect: 'block',
+          params: { allow_origin: 'https://other-site.example' },
+          request: { method: 'GET' },
+          why: 'The server only allows https://other-site.example. Our request came from origin "null", which does not match, so the browser blocked it. Exact string match — no partial credit.',
+          fix: 'Echo the caller\'s actual Origin value back in Access-Control-Allow-Origin (and add Vary: Origin so caches keep the variants apart).'
+        },
+        {
+          id: 'creds-wildcard',
+          title: 'Cookies + wildcard (the classic bug)',
+          desc: 'The request carries credentials, and the server replies with the wildcard. Looks fine — but the spec forbids the combination.',
+          expect: 'block',
+          params: { allow_origin: '*', allow_credentials: 'true' },
+          request: { method: 'GET', credentials: true },
+          why: 'Spec rule: when a request includes credentials, Access-Control-Allow-Origin may NOT be *. Even with Allow-Credentials: true present, the wildcard disqualifies the response. This is the single most common CORS bug.',
+          fix: 'Replace * with the exact calling origin, keep Access-Control-Allow-Credentials: true, and add Vary: Origin.'
+        },
+        {
+          id: 'creds-exact',
+          title: 'Cookies + exact origin (the fix)',
+          desc: 'Same credentialed request, but now the server names the calling origin exactly and allows credentials.',
+          expect: 'allow',
+          params: { allow_origin: 'null', allow_credentials: 'true', vary_origin: 'true' },
+          request: { method: 'GET', credentials: true },
+          why: 'An exact origin match plus Access-Control-Allow-Credentials: true satisfies the stricter credentialed rules. ("null" is an artifact of this sandboxed test — in production the server echoes the caller\'s real Origin value.)'
+        },
+        {
+          id: 'preflight-block',
+          title: 'POST with custom header — not allowed',
+          desc: 'A JSON POST with a custom header forces the browser to ask permission first (an OPTIONS "preflight"). Here the server never grants it.',
+          expect: 'block',
+          preflight: true,
+          params: { allow_origin: '*', allow_methods: 'GET' },
+          request: { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Custom': 'demo' }, body: '{"hello":"world"}' },
+          why: 'The preflight asked "may I POST with content-type and x-custom?" — the server answered with Allow-Methods: GET only and no Allow-Headers. Permission denied, so the real POST was never even sent. Check the Network tab: you\'ll see the OPTIONS but no POST.',
+          fix: 'Add POST to Access-Control-Allow-Methods and content-type, x-custom to Access-Control-Allow-Headers in the preflight response.'
+        },
+        {
+          id: 'preflight-ok',
+          title: 'POST with custom header — allowed',
+          desc: 'The same JSON POST, but now the preflight response grants the method and the headers.',
+          expect: 'allow',
+          preflight: true,
+          params: { allow_origin: '*', allow_methods: 'GET,POST', allow_headers: 'content-type,x-custom', max_age: '600' },
+          request: { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Custom': 'demo' }, body: '{"hello":"world"}' },
+          why: 'The preflight approved the method and headers, so the browser sent the real POST. Access-Control-Max-Age: 600 lets the browser cache that approval for 10 minutes — later POSTs skip the preflight entirely.'
         }
-        updateCurl();
-      }
+      ];
 
-      function buildEndpointUrl() {
-        const base = $('targetUrl').value || '/api/cors';
-        const url = new URL(base, window.location.origin);
-        const set = (k, v) => { if (v !== '' && v != null) url.searchParams.set(k, v); };
-        set('allow_origin',      $('allowOrigin').value);
-        set('allow_methods',     $('allowMethods').value);
-        set('allow_headers',     $('allowHeaders').value);
-        set('expose_headers',    $('exposeHeaders').value);
-        set('max_age',           $('maxAge').value);
-        set('status',            $('responseStatus').value);
-        if ($('allowCreds').checked) set('allow_credentials', 'true');
-        if ($('varyOrigin').checked) set('vary_origin', 'true');
-        return url;
-      }
-
-      function parseHeaders(text) {
-        const out = {};
-        text.split(/\r?\n/).forEach((line) => {
-          const m = /^([^:]+):\s*(.+)$/.exec(line.trim());
-          if (m) out[m[1].trim()] = m[2].trim();
-        });
-        return out;
-      }
-
-      function updateCurl() {
-        const url = buildEndpointUrl().toString();
-        const method = $('reqMethod').value;
-        const customHeaders = parseHeaders($('reqHeaders').value);
-        const body = $('reqBody').value;
-        const lines = [];
-
-        // Preflight — only generate if browser would have sent one
-        const needsPreflight = method !== 'GET' && method !== 'HEAD' && method !== 'POST'
-          || Object.keys(customHeaders).some((h) => !['accept','accept-language','content-language','content-type'].includes(h.toLowerCase()))
-          || (customHeaders['Content-Type'] && !['application/x-www-form-urlencoded','multipart/form-data','text/plain'].includes(customHeaders['Content-Type'].split(';')[0].toLowerCase()));
-
-        if (needsPreflight) {
-          lines.push('# Preflight (browser sends this automatically for cross-origin complex requests)');
-          lines.push(`curl -i -X OPTIONS \\`);
-          lines.push(`  -H 'Origin: https://attacker.example.com' \\`);
-          lines.push(`  -H 'Access-Control-Request-Method: ${method}' \\`);
-          if (Object.keys(customHeaders).length) {
-            lines.push(`  -H 'Access-Control-Request-Headers: ${Object.keys(customHeaders).join(', ').toLowerCase()}' \\`);
-          }
-          lines.push(`  '${url}'`);
-          lines.push('');
-        }
-
-        lines.push('# Actual request');
-        const curlParts = [`curl -i -X ${method} \\`, `  -H 'Origin: https://attacker.example.com' \\`];
-        Object.entries(customHeaders).forEach(([k, v]) => curlParts.push(`  -H '${k}: ${v}' \\`));
-        if (body && method !== 'GET' && method !== 'HEAD') {
-          curlParts.push(`  --data-raw ${JSON.stringify(body)} \\`);
-        }
-        curlParts.push(`  '${url}'`);
-        lines.push(...curlParts);
-        $('curlOut').textContent = lines.join('\n');
-      }
+      // --- Render scenario cards ---
+      $('scenarioGrid').innerHTML = SCENARIOS.map((s) => `
+        <article class="card scenario" id="sc-${s.id}">
+          <h3>${s.title}</h3>
+          <p>${s.desc}</p>
+          <div class="scenario-foot">
+            <span class="status-pill ${s.expect === 'allow' ? 'ok' : 'warn'}">${s.expect === 'allow' ? 'should work' : 'should block'}</span>
+            <button class="ghost" data-id="${s.id}">Run test</button>
+          </div>
+        </article>
+      `).join('');
 
       // --- Sandboxed iframe for real cross-origin enforcement ---
       // The iframe has `sandbox="allow-scripts"` (NOT `allow-same-origin`), which
@@ -297,118 +205,120 @@ parent.postMessage({ kind: 'ready' }, '*');
         });
       }
 
-      async function sendRequest() {
-        updateCurl();
-        const out = $('resultOut');
-        const url = buildEndpointUrl();
-        const method = $('reqMethod').value;
-        const headers = parseHeaders($('reqHeaders').value);
-        const body = $('reqBody').value;
-        const withCredentials = $('withCreds').checked;
-        const forceCross = $('forceCross').checked;
+      // --- Curl reproduction, built from scenario data ---
+      function buildUrl(s) {
+        const url = new URL('/api/cors', location.origin);
+        Object.entries(s.params).forEach(([k, v]) => url.searchParams.set(k, v));
+        return url.toString();
+      }
 
-        out.textContent = `Sending ${method} ${url.pathname}${url.search}${forceCross ? ' (sandboxed iframe, Origin: null)' : ' (same-origin direct fetch)'}…`;
+      function curlFor(s) {
+        const url = buildUrl(s);
+        const lines = [];
+        if (s.preflight) {
+          lines.push('# Preflight — the browser sends this automatically');
+          lines.push(`curl -i -X OPTIONS \\`);
+          lines.push(`  -H 'Origin: null' \\`);
+          lines.push(`  -H 'Access-Control-Request-Method: ${s.request.method}' \\`);
+          lines.push(`  -H 'Access-Control-Request-Headers: ${Object.keys(s.request.headers).join(', ').toLowerCase()}' \\`);
+          lines.push(`  '${url}'`);
+          lines.push('');
+        }
+        lines.push('# Actual request');
+        lines.push(`curl -i -X ${s.request.method} \\`);
+        lines.push(`  -H 'Origin: null' \\`);
+        if (s.request.credentials) lines.push(`  -H 'Cookie: session=demo' \\`);
+        Object.entries(s.request.headers || {}).forEach(([k, v]) => lines.push(`  -H '${k}: ${v}' \\`));
+        if (s.request.body) lines.push(`  --data-raw '${s.request.body}' \\`);
+        lines.push(`  '${url}'`);
+        return lines.join('\n');
+      }
+
+      // --- Run + verdict ---
+      function sentSummary(s) {
+        const bits = [`a <code>${s.request.method}</code> request`];
+        if (s.request.credentials) bits.push('with cookies enabled');
+        if (s.request.headers && Object.keys(s.request.headers).some((h) => h.toLowerCase() !== 'content-type')) bits.push('with a custom header');
+        return bits.join(' ');
+      }
+
+      function serverSummary(s) {
+        const entries = Object.entries(s.params);
+        if (!entries.length) return 'no <code>Access-Control-*</code> headers at all';
+        return entries.map(([k, v]) => `<code>${PARAM_TO_HEADER[k]}: ${k === 'vary_origin' ? 'Origin' : v}</code>`).join(', ');
+      }
+
+      async function run(s) {
+        document.querySelectorAll('.card.scenario').forEach((c) => c.classList.remove('active'));
+        $(`sc-${s.id}`).classList.add('active');
+
+        const card = $('verdictCard');
+        card.hidden = false;
+        $('verdictScenario').textContent = s.id;
+        $('verdictHead').className = 'verdict-line';
+        $('verdictHead').textContent = 'Running…';
+        $('verdictExplain').innerHTML = '';
 
         const init = {
-          method,
-          headers,
-          credentials: withCredentials ? 'include' : 'omit',
+          method: s.request.method,
+          headers: s.request.headers || {},
+          credentials: s.request.credentials ? 'include' : 'omit',
           mode: 'cors',
           cache: 'no-cache'
         };
-        if (body && method !== 'GET' && method !== 'HEAD') init.body = body;
+        if (s.request.body) init.body = s.request.body;
 
         const t0 = performance.now();
-
-        if (forceCross) {
-          // Cross-origin path via sandboxed iframe — browser enforces CORS
-          const result = await fetchViaFrame(url.toString(), init);
-          const ms = (performance.now() - t0).toFixed(1);
-
-          if (result.ok) {
-            let parsed = result.body;
-            try { parsed = JSON.stringify(JSON.parse(result.body), null, 2); } catch {}
-            const grn = result.headers['grn'] || result.headers['x-akamai-request-id'];
-            out.textContent = [
-              `HTTP ${result.status} ${result.statusText} · ${ms} ms`,
-              grn ? `GRN: ${grn}` : '',
-              '',
-              '✓ Browser ALLOWED the cross-origin response.',
-              '  Origin: null (sandboxed iframe). The configured Access-Control-* headers were sufficient.',
-              '',
-              '--- Response headers visible to JS ---',
-              '  (Only "CORS-safelisted" headers + anything in Access-Control-Expose-Headers are readable.)',
-              Object.entries(result.headers).map(([k, v]) => `${k}: ${v}`).join('\n'),
-              '',
-              '--- Response body ---',
-              parsed
-            ].filter(Boolean).join('\n');
-          } else {
-            out.textContent = [
-              `✗ Browser BLOCKED the cross-origin response (${ms} ms).`,
-              `${result.errorName || 'Error'}: ${result.error}`,
-              '',
-              'Common causes (open DevTools → Console for the exact browser message):',
-              '  • Access-Control-Allow-Origin missing, or does not match Origin: null',
-              '    (for null origin you need Allow-Origin: * OR the literal string "null")',
-              '  • credentials: include but origin sent Allow-Origin: * (must be exact, not wildcard)',
-              '  • credentials: include but origin did not send Access-Control-Allow-Credentials: true',
-              '  • Preflight rejected: method not in Allow-Methods, or custom header not in Allow-Headers',
-              '  • Preflight returned non-2xx',
-              '',
-              'In DevTools → Network, look for both the OPTIONS preflight and the actual request.',
-              'The preflight may have succeeded (200/204) while the actual was blocked, or vice versa.'
-            ].join('\n');
-          }
-          return;
-        }
-
-        // Same-origin path (no enforcement) — useful for previewing what origin returns
-        try {
-          const res = await fetch(url.toString(), init);
-          const respHeaders = Object.fromEntries(res.headers.entries());
-          const text = await res.text();
-          let parsed = text;
-          try { parsed = JSON.stringify(JSON.parse(text), null, 2); } catch {}
-          const ms = (performance.now() - t0).toFixed(1);
-          const grnLine = AkamaiDebug.grnLine(res);
-
-          out.textContent = [
-            `HTTP ${res.status} ${res.statusText} · ${ms} ms`,
-            grnLine,
-            '',
-            '✓ Same-origin response received (CORS not enforced — flip the cross-origin checkbox to see blocks).',
-            '',
-            '--- Response headers (all visible because same-origin) ---',
-            Object.entries(respHeaders).map(([k, v]) => `${k}: ${v}`).join('\n'),
-            '',
-            '--- Response body ---',
-            parsed
-          ].filter(Boolean).join('\n');
-        } catch (e) {
-          out.textContent = `✗ Request failed: ${e.message}`;
-        }
+        const r = await fetchViaFrame(buildUrl(s), init);
+        const ms = (performance.now() - t0).toFixed(0);
+        renderVerdict(s, r, ms);
+        card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
 
-      // Wire up
-      document.querySelectorAll('button[data-scenario]').forEach((b) => {
-        b.addEventListener('click', () => applyScenario(b.dataset.scenario));
+      function renderVerdict(s, r, ms) {
+        const allowed = r.ok;
+        const head = $('verdictHead');
+        head.className = `verdict-line ${allowed ? 'ok' : 'blocked'}`;
+        head.textContent = `${allowed ? '✓ Allowed' : '✗ Blocked'} · ${ms} ms`;
+
+        const surprise = (allowed ? 'allow' : 'block') !== s.expect
+          ? `<p class="muted">(unexpected — this scenario normally ${s.expect === 'allow' ? 'works' : 'blocks'}; your browser may behave differently. Check DevTools Console.)</p>`
+          : '';
+
+        $('verdictExplain').innerHTML = `
+          ${surprise}
+          <p><strong>What happened:</strong> a sandboxed iframe (origin <code>null</code>) sent ${sentSummary(s)} to <code>/api/cors</code>. The server answered with ${serverSummary(s)}.</p>
+          <p>${s.why}</p>
+          ${!allowed && s.fix ? `<p class="fix-line"><strong>The fix:</strong> ${s.fix}</p>` : ''}
+        `;
+
+        if (allowed) {
+          const grn = AkamaiDebug.grnLine({ headers: { get: (k) => r.headers[k] || null } });
+          $('headersOut').textContent =
+            `HTTP ${r.status} ${r.statusText}\n` +
+            (grn ? grn + '\n' : '') +
+            Object.entries(r.headers).map(([k, v]) => `${k}: ${v}`).join('\n') +
+            `\n\n(Only CORS-safelisted headers plus anything in Access-Control-Expose-Headers are visible to JavaScript.)`;
+        } else {
+          $('headersOut').textContent =
+            `JavaScript cannot read anything from a blocked response — not even the status code.\n` +
+            `Browser error: ${r.errorName || 'TypeError'}: ${r.error}\n\n` +
+            `What the server actually sent (per this scenario): ` +
+            (Object.keys(s.params).length
+              ? Object.entries(s.params).map(([k, v]) => `\n  ${PARAM_TO_HEADER[k]}: ${k === 'vary_origin' ? 'Origin' : v}`).join('')
+              : '\n  (no Access-Control headers)') +
+            `\n\nSee DevTools → Network for the raw exchange.`;
+        }
+
+        $('curlOut').textContent = curlFor(s);
+      }
+
+      $('scenarioGrid').addEventListener('click', (ev) => {
+        const btn = ev.target.closest('button[data-id]');
+        if (!btn) return;
+        const s = SCENARIOS.find((x) => x.id === btn.dataset.id);
+        if (s) run(s);
       });
-      $('sendBtn').addEventListener('click', sendRequest);
-      $('clearBtn').addEventListener('click', () => {
-        fields.forEach((id) => {
-          const el = $(id);
-          if (el.type === 'checkbox') el.checked = false;
-          else if (el.tagName === 'SELECT') el.selectedIndex = 0;
-          else el.value = '';
-        });
-        $('targetUrl').value = '/api/cors';
-        $('responseStatus').value = '200';
-        $('resultOut').textContent = 'Cleared.';
-        updateCurl();
-      });
-      fields.forEach((id) => $(id).addEventListener('input', updateCurl));
-      updateCurl();
     </script>
   </body>
 </html>
