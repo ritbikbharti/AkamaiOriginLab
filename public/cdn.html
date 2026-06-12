@@ -60,6 +60,38 @@
             <button id="etagBtn">Call /api/cache/etag</button>
             <pre id="etagOut">Click to fetch.</pre>
           </article>
+
+          <article class="card">
+            <h3>s-maxage <span class="status-pill">edge 120s</span></h3>
+            <p><code>Cache-Control: public, max-age=10, s-maxage=120</code></p>
+            <p class="muted">Browser revalidates after 10s; the edge keeps serving HITs until <code>Age</code> reaches 120. Watch <code>generatedAt</code> stay frozen while <code>Age</code> climbs.</p>
+            <button data-endpoint="/api/cache/s-maxage">Call</button>
+            <pre data-out>Click to fetch.</pre>
+          </article>
+
+          <article class="card">
+            <h3>stale-while-revalidate <span class="status-pill">swr 60s</span></h3>
+            <p><code>Cache-Control: public, max-age=10, stale-while-revalidate=60</code></p>
+            <p class="muted">After 10s the edge may answer stale instantly (HIT with <code>Age</code> &gt; 10) while it refetches in the background.</p>
+            <button data-endpoint="/api/cache/swr">Call</button>
+            <pre data-out>Click to fetch.</pre>
+          </article>
+
+          <article class="card">
+            <h3>stale-if-error <span class="status-pill ok">serve-stale</span></h3>
+            <p><code>Cache-Control: public, max-age=10, stale-if-error=300</code></p>
+            <p class="muted">Prime the cache here, then break the origin with the <a href="/tools.html">Failover simulator</a> — this endpoint fails with it. The edge can serve the stale copy instead of the 500.</p>
+            <button data-endpoint="/api/cache/sie">Call</button>
+            <pre data-out>Click to fetch.</pre>
+          </article>
+
+          <article class="card">
+            <h3>no-cache <span class="status-pill">revalidate</span></h3>
+            <p><code>Cache-Control: public, no-cache</code> + <code>ETag</code></p>
+            <p class="muted">Cacheable but every use revalidates: the edge sends <code>If-None-Match</code>, origin answers a cheap 304. Try curl with <code>If-None-Match</code> to see the raw 304.</p>
+            <button data-endpoint="/api/cache/no-cache">Call</button>
+            <pre data-out>Click to fetch.</pre>
+          </article>
         </div>
       </section>
 

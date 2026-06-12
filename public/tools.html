@@ -35,6 +35,34 @@
 
       <section class="grid cols-2">
         <article class="card">
+          <h3>Origin failover <span class="status-pill warn">break things</span></h3>
+          <p>Flip this origin into a failure mode for a fixed window, then watch how the edge reacts — Site Failover, origin health detection, or <code>stale-if-error</code> on the Cache page. Auto-recovers when the countdown ends; the rest of this site stays up while "broken".</p>
+          <div class="toolbar">
+            <label class="grow" style="margin:0;">
+              Failure mode
+              <select id="foMode">
+                <option value="http-500" selected>HTTP 500 (instant error)</option>
+                <option value="timeout">Timeout (hang 35s)</option>
+                <option value="connection-reset">Connection reset (TCP drop)</option>
+                <option value="slow">Slow (15s delay, then 200)</option>
+              </select>
+            </label>
+            <label style="margin:0;">
+              Duration (s, max 300)
+              <input id="foSeconds" type="number" min="1" max="300" value="60" style="width: 7rem;" />
+            </label>
+          </div>
+          <div style="margin-top: 0.6rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <button id="foBreakBtn">Break origin</button>
+            <button class="ghost" id="foRestoreBtn">Restore now</button>
+          </div>
+          <p id="foStatusLine" class="muted" style="margin-top: 0.6rem;">checking status…</p>
+          <p class="muted" style="font-size: 0.78rem;">Akamai flow: point a Site Failover / origin-health match at <code>GET /api/failover/test</code>, break the origin here, then curl your edge hostname and watch it serve the alternate. Probe the victim directly:</p>
+          <pre id="foCurl">(loading)</pre>
+          <pre id="foOut">No action yet.</pre>
+        </article>
+
+        <article class="card">
           <h3>Slow response <span class="status-pill warn">artificial delay</span></h3>
           <p>Origin sleeps before responding. Useful for edge timeout tuning, slowloris-style testing, and TCP keep-alive validation.</p>
           <div class="toolbar">
@@ -405,6 +433,60 @@
         document.getElementById('sseStopBtn').disabled = true;
         document.getElementById('sseOut').textContent += '(closed by user)\n';
       });
+
+      // --- Origin failover simulator
+      const foStatusLine = document.getElementById('foStatusLine');
+      const foOut = document.getElementById('foOut');
+      let foPoller = null;
+
+      document.getElementById('foCurl').textContent =
+        `curl -i ${location.origin}/api/failover/test`;
+
+      function foRenderStatus(s) {
+        if (s.active) {
+          foStatusLine.innerHTML =
+            `<span class="status-pill warn">broken</span> mode: ${s.mode} — auto-recovers in ${s.remainingSeconds}s`;
+          if (!foPoller) foPoller = setInterval(loadFailoverStatus, 3000);
+        } else {
+          foStatusLine.innerHTML = `<span class="status-pill ok">healthy</span> origin serving normally`;
+          if (foPoller) { clearInterval(foPoller); foPoller = null; }
+        }
+      }
+
+      async function loadFailoverStatus() {
+        if (document.hidden) return;
+        try {
+          const res = await fetch('/api/failover', { cache: 'no-cache' });
+          foRenderStatus(await res.json());
+        } catch (e) {
+          foStatusLine.textContent = `status error: ${e.message}`;
+        }
+      }
+
+      async function foPost(body) {
+        foOut.textContent = 'Sending…';
+        try {
+          const res = await fetch('/api/failover', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(body)
+          });
+          const data = await res.json();
+          showResponse(foOut, res, data);
+          foRenderStatus(data);
+        } catch (e) {
+          foOut.textContent = `Error: ${e.message}`;
+        }
+      }
+
+      document.getElementById('foBreakBtn').addEventListener('click', () => {
+        foPost({
+          mode: document.getElementById('foMode').value,
+          seconds: Number(document.getElementById('foSeconds').value) || 60
+        });
+      });
+      document.getElementById('foRestoreBtn').addEventListener('click', () => foPost({ mode: 'off' }));
+      loadFailoverStatus();
 
       // --- Request log
       const logBody = document.getElementById('logBody');

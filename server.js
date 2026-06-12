@@ -46,6 +46,15 @@ const LFO_ETAG = `"lfo-${crypto.createHash('sha1').update(LFO_CHUNK).digest('hex
 const STARTUP_TIME = new Date();
 const ETAG_VALUE = `"${crypto.createHash('sha1').update(STARTUP_TIME.toISOString()).digest('hex').slice(0, 16)}"`;
 
+// --- Failover simulator: in-memory, no persistence, no timers.
+// Expiry is evaluated lazily on every read; restart resets to healthy.
+// Failures gate ONLY /api/failover/test and /api/cache/sie so the control
+// API, /api/log, and all pages stay reachable while "broken".
+const FAILOVER_MODES = ['http-500', 'timeout', 'connection-reset', 'slow'];
+const FAILOVER_MAX_SECONDS = 300;
+const FAILOVER_DEFAULT_SECONDS = 60;
+let failover = { mode: 'off', expiresAt: 0 };
+
 // Live request log
 const requestLog = [];
 let totalRequests = 0;
@@ -178,6 +187,68 @@ function parseJsonBody(req) {
   });
 }
 
+function failoverStatus() {
+  if (failover.mode !== 'off' && failover.expiresAt <= Date.now()) {
+    failover = { mode: 'off', expiresAt: 0 };
+  }
+  const active = failover.mode !== 'off';
+  return {
+    active,
+    mode: failover.mode,
+    remainingSeconds: active ? Math.ceil((failover.expiresAt - Date.now()) / 1000) : 0
+  };
+}
+
+// Returns true when the failure mode consumed the response.
+function applyFailover(req, res) {
+  const status = failoverStatus();
+  if (!status.active) return false;
+  switch (status.mode) {
+    case 'http-500':
+      sendJson(res, 500, {
+        error: 'Simulated origin failure',
+        mode: status.mode,
+        remainingSeconds: status.remainingSeconds
+      }, { 'Cache-Control': 'no-store' });
+      return true;
+    case 'connection-reset':
+      // statusCode 0 = "no HTTP response existed" in the request log
+      res.statusCode = 0;
+      res.socket.destroy();
+      return true;
+    case 'timeout': {
+      // Hang past typical edge read timeouts, then 504 so direct curls
+      // don't pin a socket forever.
+      const t = setTimeout(() => {
+        if (!res.writableEnded) {
+          sendJson(res, 504, {
+            error: 'Simulated origin timeout',
+            mode: status.mode
+          }, { 'Cache-Control': 'no-store' });
+        }
+      }, 35000);
+      req.on('close', () => clearTimeout(t));
+      return true;
+    }
+    case 'slow': {
+      const t = setTimeout(() => {
+        if (!res.writableEnded) {
+          sendJson(res, 200, {
+            status: 'ok',
+            mode: 'slow',
+            delayedMs: 15000,
+            generatedAt: new Date().toISOString()
+          }, { 'Cache-Control': 'no-store' });
+        }
+      }, 15000);
+      req.on('close', () => clearTimeout(t));
+      return true;
+    }
+    default:
+      return false;
+  }
+}
+
 function parseEdgescape(headerValue) {
   if (!headerValue || typeof headerValue !== 'string') return null;
   const out = {};
@@ -242,6 +313,34 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (pathname === '/api/cache/s-maxage') {
+    sendJson(res, 200, {
+      note: 'Browser revalidates after 10s; shared caches (the edge) may serve for 120s.',
+      generatedAt: new Date().toISOString()
+    }, { 'Cache-Control': 'public, max-age=10, s-maxage=120' });
+    return;
+  }
+
+  if (pathname === '/api/cache/swr') {
+    sendJson(res, 200, {
+      note: 'After max-age expires the cache may serve this stale for 60s while refetching in the background.',
+      generatedAt: new Date().toISOString()
+    }, { 'Cache-Control': 'public, max-age=10, stale-while-revalidate=60' });
+    return;
+  }
+
+  if (pathname === '/api/cache/sie') {
+    // Deliberately coupled to the failover simulator: prime the cache, break
+    // the origin (POST /api/failover), and the edge can serve this stale for
+    // up to 300s instead of surfacing the 500.
+    if (applyFailover(req, res)) return;
+    sendJson(res, 200, {
+      note: 'If the origin errors after max-age expiry, the cache may serve this stale for 300s. Break the origin via /api/failover to demo it.',
+      generatedAt: new Date().toISOString()
+    }, { 'Cache-Control': 'public, max-age=10, stale-if-error=300' });
+    return;
+  }
+
   if (pathname === '/api/cache/surrogate') {
     sendJson(res, 200, {
       note: 'Surrogate-Control tells the edge to cache; Cache-Control tells the browser not to.',
@@ -277,6 +376,35 @@ const server = http.createServer(async (req, res) => {
       ETag: ETAG_VALUE,
       'Last-Modified': lastModified,
       'Cache-Control': 'public, max-age=60, must-revalidate'
+    });
+    return;
+  }
+
+  if (pathname === '/api/cache/no-cache') {
+    // Cacheable, but every use must revalidate. Same conditional logic as
+    // /api/cache/etag; only the Cache-Control differs.
+    const ifNoneMatch = req.headers['if-none-match'];
+    const ifModifiedSince = req.headers['if-modified-since'];
+    const lastModified = STARTUP_TIME.toUTCString();
+    const matchesEtag = ifNoneMatch && ifNoneMatch.split(',').map((s) => s.trim()).includes(ETAG_VALUE);
+    const matchesDate = ifModifiedSince && new Date(ifModifiedSince).getTime() >= Math.floor(STARTUP_TIME.getTime() / 1000) * 1000;
+    if (matchesEtag || matchesDate) {
+      res.writeHead(304, {
+        ETag: ETAG_VALUE,
+        'Last-Modified': lastModified,
+        'Cache-Control': 'public, no-cache'
+      });
+      res.end();
+      return;
+    }
+    sendJson(res, 200, {
+      note: 'Cacheable but always revalidated: the cache must send If-None-Match every time and gets a cheap 304 back.',
+      etag: ETAG_VALUE,
+      generatedAt: new Date().toISOString()
+    }, {
+      ETag: ETAG_VALUE,
+      'Last-Modified': lastModified,
+      'Cache-Control': 'public, no-cache'
     });
     return;
   }
@@ -368,6 +496,50 @@ const server = http.createServer(async (req, res) => {
       }, { 'Cache-Control': 'no-store' });
     }, ms);
     req.on('close', () => clearTimeout(timer));
+    return;
+  }
+
+  // --- Failover simulator
+  if (pathname === '/api/failover' && req.method === 'GET') {
+    sendJson(res, 200, {
+      ...failoverStatus(),
+      victim: '/api/failover/test',
+      modes: FAILOVER_MODES,
+      note: 'POST {"mode":"http-500","seconds":60} to break the victim endpoint; {"mode":"off"} to restore. State is in-memory; a server restart heals it.'
+    }, { 'Cache-Control': 'no-store' });
+    return;
+  }
+
+  if (pathname === '/api/failover' && req.method === 'POST') {
+    try {
+      const body = await parseJsonBody(req);
+      const mode = typeof body.mode === 'string' ? body.mode : '';
+      if (mode === 'off') {
+        failover = { mode: 'off', expiresAt: 0 };
+        sendJson(res, 200, { ...failoverStatus(), victim: '/api/failover/test' }, { 'Cache-Control': 'no-store' });
+        return;
+      }
+      if (!FAILOVER_MODES.includes(mode)) {
+        sendJson(res, 400, { error: `Unknown mode "${mode}"`, validModes: [...FAILOVER_MODES, 'off'] });
+        return;
+      }
+      const requested = Number.parseInt(body.seconds, 10);
+      const seconds = Math.min(Math.max(Number.isFinite(requested) ? requested : FAILOVER_DEFAULT_SECONDS, 1), FAILOVER_MAX_SECONDS);
+      failover = { mode, expiresAt: Date.now() + seconds * 1000 };
+      sendJson(res, 200, { ...failoverStatus(), victim: '/api/failover/test' }, { 'Cache-Control': 'no-store' });
+    } catch (error) {
+      sendJson(res, 400, { error: error.message });
+    }
+    return;
+  }
+
+  if (pathname === '/api/failover/test') {
+    if (applyFailover(req, res)) return;
+    sendJson(res, 200, {
+      status: 'ok',
+      endpoint: 'failover-victim',
+      generatedAt: new Date().toISOString()
+    }, { 'Cache-Control': 'no-store' });
     return;
   }
 
@@ -615,7 +787,9 @@ const server = http.createServer(async (req, res) => {
         '/api/origin', '/api/log',
         '/api/time', '/api/popular-locations', '/api/fact', '/api/joke',
         '/api/cache/short', '/api/cache/long', '/api/cache/private',
-        '/api/cache/surrogate', '/api/cache/etag',
+        '/api/cache/surrogate', '/api/cache/etag', '/api/cache/no-cache',
+        '/api/cache/s-maxage', '/api/cache/swr', '/api/cache/sie',
+        'GET /api/failover', 'POST /api/failover', '/api/failover/test',
         '/api/size?bytes=1024', '/api/compressible?bytes=20480',
         '/api/slow?ms=2000', '/api/redirect?to=/&code=302',
         '/api/lfo?bytes=N', 'GET /api/cookie', 'POST /api/cookie', '/api/stream',

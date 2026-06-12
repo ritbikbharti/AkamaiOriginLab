@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
 const http = require('node:http');
 const path = require('node:path');
+const { setTimeout: delay } = require('node:timers/promises');
 
 const PORT = 13999;
 let server;
@@ -50,7 +51,16 @@ function request(reqPath, options = {}) {
       });
     });
     req.on('error', reject);
+    if (options.body) req.write(options.body);
     req.end();
+  });
+}
+
+function postJson(reqPath, obj) {
+  return request(reqPath, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(obj)
   });
 }
 
@@ -103,6 +113,36 @@ test('/api/cache/etag returns 304 on If-None-Match match', async () => {
   const etag = first.headers.etag;
   assert.ok(etag, 'expected ETag header');
   const second = await request('/api/cache/etag', { headers: { 'If-None-Match': etag } });
+  assert.equal(second.status, 304);
+  assert.equal(second.body.length, 0);
+});
+
+test('/api/cache/s-maxage emits split browser/edge TTLs', async () => {
+  const res = await request('/api/cache/s-maxage');
+  assert.equal(res.status, 200);
+  assert.equal(res.headers['cache-control'], 'public, max-age=10, s-maxage=120');
+  assert.ok(JSON.parse(res.body).generatedAt);
+});
+
+test('/api/cache/swr emits stale-while-revalidate', async () => {
+  const res = await request('/api/cache/swr');
+  assert.equal(res.status, 200);
+  assert.equal(res.headers['cache-control'], 'public, max-age=10, stale-while-revalidate=60');
+});
+
+test('/api/cache/sie emits stale-if-error', async () => {
+  const res = await request('/api/cache/sie');
+  assert.equal(res.status, 200);
+  assert.equal(res.headers['cache-control'], 'public, max-age=10, stale-if-error=300');
+});
+
+test('/api/cache/no-cache emits public, no-cache with ETag and honors If-None-Match', async () => {
+  const first = await request('/api/cache/no-cache');
+  assert.equal(first.status, 200);
+  assert.equal(first.headers['cache-control'], 'public, no-cache');
+  const etag = first.headers.etag;
+  assert.ok(etag, 'expected ETag header');
+  const second = await request('/api/cache/no-cache', { headers: { 'If-None-Match': etag } });
   assert.equal(second.status, 304);
   assert.equal(second.body.length, 0);
 });
@@ -237,6 +277,70 @@ test('GET /akamai/sureroute-test-object.html serves the SureRoute probe target',
   assert.match(res.headers['content-type'], /text\/html/);
   // SureRoute probes prefer an object large enough to give meaningful timing.
   assert.ok(res.body.length >= 8192, `expected >=8 KB, got ${res.body.length} bytes`);
+});
+
+test('failover lifecycle: break with http-500, victim fails, restore heals', async () => {
+  const healthy = await request('/api/failover/test');
+  assert.equal(healthy.status, 200);
+
+  const set = await postJson('/api/failover', { mode: 'http-500', seconds: 60 });
+  assert.equal(set.status, 200);
+  const setBody = JSON.parse(set.body);
+  assert.equal(setBody.active, true);
+  assert.equal(setBody.mode, 'http-500');
+  assert.ok(setBody.remainingSeconds > 0 && setBody.remainingSeconds <= 60);
+
+  const broken = await request('/api/failover/test');
+  assert.equal(broken.status, 500);
+  assert.equal(JSON.parse(broken.body).error, 'Simulated origin failure');
+
+  const status = await request('/api/failover');
+  assert.equal(JSON.parse(status.body).active, true);
+
+  // Control API and log must stay reachable while broken
+  const log = await request('/api/log');
+  assert.equal(log.status, 200);
+
+  const off = await postJson('/api/failover', { mode: 'off' });
+  assert.equal(JSON.parse(off.body).active, false);
+  const restored = await request('/api/failover/test');
+  assert.equal(restored.status, 200);
+});
+
+test('failover connection-reset destroys the socket', async () => {
+  await postJson('/api/failover', { mode: 'connection-reset', seconds: 60 });
+  await assert.rejects(request('/api/failover/test'), /ECONNRESET|socket hang up/);
+  await postJson('/api/failover', { mode: 'off' });
+});
+
+test('failover gates /api/cache/sie too', async () => {
+  await postJson('/api/failover', { mode: 'http-500', seconds: 60 });
+  const broken = await request('/api/cache/sie');
+  assert.equal(broken.status, 500);
+  await postJson('/api/failover', { mode: 'off' });
+  const healed = await request('/api/cache/sie');
+  assert.equal(healed.status, 200);
+});
+
+test('failover auto-expires without an explicit off', async () => {
+  await postJson('/api/failover', { mode: 'http-500', seconds: 1 });
+  const broken = await request('/api/failover/test');
+  assert.equal(broken.status, 500);
+  await delay(1300);
+  const healed = await request('/api/failover/test');
+  assert.equal(healed.status, 200);
+  const status = JSON.parse((await request('/api/failover')).body);
+  assert.equal(status.active, false);
+});
+
+test('failover validation: bad mode 400, seconds clamped to 300', async () => {
+  const bad = await postJson('/api/failover', { mode: 'bogus' });
+  assert.equal(bad.status, 400);
+  assert.ok(JSON.parse(bad.body).validModes.includes('http-500'));
+
+  const clamped = await postJson('/api/failover', { mode: 'http-500', seconds: 9999 });
+  assert.ok(JSON.parse(clamped.body).remainingSeconds <= 300);
+  await postJson('/api/failover', { mode: 'off' });
 });
 
 test('Unknown route returns 404 JSON with availableRoutes', async () => {

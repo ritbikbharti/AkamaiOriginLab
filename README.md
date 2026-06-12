@@ -23,6 +23,15 @@ A self-contained origin for testing Akamai (or any CDN) configuration. Modern UI
 - `GET /api/cache/private` — `Cache-Control: private, no-store`
 - `GET /api/cache/surrogate` — edge caches (`Surrogate-Control: max-age=300`), browser doesn't (`Cache-Control: no-store`)
 - `GET /api/cache/etag` — supports `If-None-Match` / `If-Modified-Since`, returns `304` on match
+- `GET /api/cache/no-cache` — `Cache-Control: public, no-cache` + ETag; cacheable but revalidates every use
+- `GET /api/cache/s-maxage` — `max-age=10, s-maxage=120`; browser and edge TTLs split
+- `GET /api/cache/swr` — `stale-while-revalidate=60`
+- `GET /api/cache/sie` — `stale-if-error=300`; fails together with the failover simulator for serve-stale demos
+
+### Failover simulator
+- `GET /api/failover` — current state (mode, remaining seconds)
+- `POST /api/failover` — body `{ "mode": "http-500" | "timeout" | "connection-reset" | "slow" | "off", "seconds": 60 }` (max 300, auto-recovers)
+- `GET /api/failover/test` — the victim endpoint; healthy 200 unless a failure mode is active. Point Akamai Site Failover / origin health checks here.
 
 ### Akamai-specific
 - `GET /api/akamai/client` — echoes `True-Client-IP`, `X-Forwarded-For`, `Via`, etc.
