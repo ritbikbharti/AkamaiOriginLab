@@ -100,13 +100,6 @@ test('/api/cache/private emits no-store', async () => {
   assert.match(res.headers['cache-control'], /no-store/);
 });
 
-test('/api/cache/surrogate sends both Surrogate-Control and no-store', async () => {
-  const res = await request('/api/cache/surrogate');
-  assert.equal(res.status, 200);
-  assert.match(res.headers['cache-control'], /no-store/);
-  assert.match(res.headers['surrogate-control'], /max-age=300/);
-});
-
 test('/api/cache/etag returns 304 on If-None-Match match', async () => {
   const first = await request('/api/cache/etag');
   assert.equal(first.status, 200);

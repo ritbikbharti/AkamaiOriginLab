@@ -22,7 +22,6 @@ const MIME_TYPES = {
 
 const FACTS = [
   'Akamai EdgeScape headers carry country, region, city, and ASN data — perfect for geo-based config.',
-  'Surrogate-Control lets the edge cache while telling the browser not to.',
   'A 304 Not Modified is the cheapest possible response — bytes saved everywhere.',
   'You can override response status with the x-demo-status request header.'
 ];
@@ -338,18 +337,6 @@ const server = http.createServer(async (req, res) => {
       note: 'If the origin errors after max-age expiry, the cache may serve this stale for 300s. Break the origin via /api/failover to demo it.',
       generatedAt: new Date().toISOString()
     }, { 'Cache-Control': 'public, max-age=10, stale-if-error=300' });
-    return;
-  }
-
-  if (pathname === '/api/cache/surrogate') {
-    sendJson(res, 200, {
-      note: 'Surrogate-Control tells the edge to cache; Cache-Control tells the browser not to.',
-      generatedAt: new Date().toISOString()
-    }, {
-      'Cache-Control': 'no-store',
-      'Surrogate-Control': 'max-age=300',
-      'Surrogate-Key': 'demosite-surrogate'
-    });
     return;
   }
 
@@ -787,7 +774,7 @@ const server = http.createServer(async (req, res) => {
         '/api/origin', '/api/log',
         '/api/time', '/api/popular-locations', '/api/fact', '/api/joke',
         '/api/cache/short', '/api/cache/long', '/api/cache/private',
-        '/api/cache/surrogate', '/api/cache/etag', '/api/cache/no-cache',
+        '/api/cache/etag', '/api/cache/no-cache',
         '/api/cache/s-maxage', '/api/cache/swr', '/api/cache/sie',
         'GET /api/failover', 'POST /api/failover', '/api/failover/test',
         '/api/size?bytes=1024', '/api/compressible?bytes=20480',

@@ -63,12 +63,6 @@
           <pre id="pragmaOut">No request yet.</pre>
         </article>
 
-        <article class="card">
-          <h3>Surrogate-Control <span class="status-pill ok">edge-only TTL</span></h3>
-          <p>Returns <code>Surrogate-Control: max-age=300</code> alongside <code>Cache-Control: no-store</code>. Edge caches for 5 minutes; browser does not.</p>
-          <button id="surrogateBtn">GET /api/cache/surrogate</button>
-          <pre id="surrogateOut">Click to fetch.</pre>
-        </article>
       </section>
 
       <section class="card">
@@ -110,7 +104,6 @@
 
       document.getElementById('clientBtn').addEventListener('click', () => callJson('/api/akamai/client', document.getElementById('clientOut')));
       document.getElementById('geoBtn').addEventListener('click', () => callJson('/api/akamai/geo', document.getElementById('geoOut')));
-      document.getElementById('surrogateBtn').addEventListener('click', () => callJson('/api/cache/surrogate', document.getElementById('surrogateOut')));
 
       document.getElementById('pragmaBtn').addEventListener('click', async () => {
         const out = document.getElementById('pragmaOut');

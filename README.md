@@ -11,7 +11,7 @@ A self-contained origin for testing Akamai (or any CDN) configuration. Modern UI
 - `/` — overview
 - `/cdn.html` — **Cache** — Cache-Control TTLs, ETag/304 demo, variable payload sizes, image gallery
 - `/responses.html` — **Response Status** — force any HTTP status via `x-demo-status`, inspect the request headers seen by origin
-- `/akamai.html` — **Akamai** — True-Client-IP, EdgeScape geo decoding, Pragma debug, Surrogate-Control
+- `/akamai.html` — **Akamai** — True-Client-IP, EdgeScape geo decoding, Pragma debug
 - `/cors.html` — **CORS** — fully configurable `Access-Control-*` response headers, request builder, quick scenarios for wildcard / credentials-bug / preflight rejection / exposed headers, sandboxed-iframe runner for real `Origin: null` enforcement
 - `/tools.html` — **Misc** — slow responses, redirects, Large File Object (LFO, up to 2 GB — includes 1.5 GB / 1.8 GB / 2 GB presets to bracket Akamai's 1.8 GB LFO threshold) with Range support, cookies, compression, SSE, live request log
 
@@ -21,7 +21,6 @@ A self-contained origin for testing Akamai (or any CDN) configuration. Modern UI
 - `GET /api/cache/short` — `Cache-Control: public, max-age=10`
 - `GET /api/cache/long` — `Cache-Control: public, max-age=86400`
 - `GET /api/cache/private` — `Cache-Control: private, no-store`
-- `GET /api/cache/surrogate` — edge caches (`Surrogate-Control: max-age=300`), browser doesn't (`Cache-Control: no-store`)
 - `GET /api/cache/etag` — supports `If-None-Match` / `If-Modified-Since`, returns `304` on match
 - `GET /api/cache/no-cache` — `Cache-Control: public, no-cache` + ETag; cacheable but revalidates every use
 - `GET /api/cache/s-maxage` — `max-age=10, s-maxage=120`; browser and edge TTLs split
