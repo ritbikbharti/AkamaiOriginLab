@@ -41,10 +41,8 @@
             <label class="grow" style="margin:0;">
               Failure mode
               <select id="foMode">
-                <option value="http-500" selected>HTTP 500 (instant error)</option>
-                <option value="timeout">Timeout (hang 35s)</option>
-                <option value="connection-reset">Connection reset (TCP drop)</option>
-                <option value="slow">Slow (15s delay, then 200)</option>
+                <option value="connection-reset" selected>Connection reset (TCP drop — instant)</option>
+                <option value="timeout">Timeout (silent &gt;120s → edge read timeout)</option>
               </select>
             </label>
             <label style="margin:0;">
@@ -435,32 +433,36 @@
       });
 
       // --- Origin failover simulator
+      // Countdown ticks locally (no repeated network polling); one fetch on
+      // load reflects state set elsewhere (e.g. via curl).
       const foStatusLine = document.getElementById('foStatusLine');
       const foOut = document.getElementById('foOut');
-      let foPoller = null;
+      let foTicker = null;
+      let foExpiresAt = 0;
 
       document.getElementById('foCurl').textContent =
         `curl -i ${location.origin}/api/failover/test`;
 
-      function foRenderStatus(s) {
-        if (s.active) {
-          foStatusLine.innerHTML =
-            `<span class="status-pill warn">broken</span> mode: ${s.mode} — auto-recovers in ${s.remainingSeconds}s`;
-          if (!foPoller) foPoller = setInterval(loadFailoverStatus, 3000);
-        } else {
-          foStatusLine.innerHTML = `<span class="status-pill ok">healthy</span> origin serving normally`;
-          if (foPoller) { clearInterval(foPoller); foPoller = null; }
-        }
+      function foStopTicker() { if (foTicker) { clearInterval(foTicker); foTicker = null; } }
+
+      function foHealthy() {
+        foStopTicker();
+        foStatusLine.innerHTML = `<span class="status-pill ok">healthy</span> origin serving normally`;
       }
 
-      async function loadFailoverStatus() {
-        if (document.hidden) return;
-        try {
-          const res = await fetch('/api/failover', { cache: 'no-cache' });
-          foRenderStatus(await res.json());
-        } catch (e) {
-          foStatusLine.textContent = `status error: ${e.message}`;
-        }
+      function foTick(mode) {
+        const remaining = Math.ceil((foExpiresAt - Date.now()) / 1000);
+        if (remaining <= 0) { foHealthy(); return; }
+        foStatusLine.innerHTML =
+          `<span class="status-pill warn">broken</span> mode: ${mode} — auto-recovers in ${remaining}s`;
+      }
+
+      function foStartCountdown(s) {
+        foStopTicker();
+        if (!s.active) { foHealthy(); return; }
+        foExpiresAt = Date.now() + s.remainingSeconds * 1000;
+        foTick(s.mode);
+        foTicker = setInterval(() => foTick(s.mode), 1000);
       }
 
       async function foPost(body) {
@@ -473,7 +475,7 @@
           });
           const data = await res.json();
           showResponse(foOut, res, data);
-          foRenderStatus(data);
+          foStartCountdown(data);
         } catch (e) {
           foOut.textContent = `Error: ${e.message}`;
         }
@@ -486,7 +488,12 @@
         });
       });
       document.getElementById('foRestoreBtn').addEventListener('click', () => foPost({ mode: 'off' }));
-      loadFailoverStatus();
+
+      // One status read on load (reflects state if already broken via curl).
+      fetch('/api/failover', { cache: 'no-cache' })
+        .then((r) => r.json())
+        .then(foStartCountdown)
+        .catch(() => { foStatusLine.textContent = 'status unavailable'; });
 
       // --- Request log
       const logBody = document.getElementById('logBody');

@@ -29,7 +29,7 @@ A self-contained origin for testing Akamai (or any CDN) configuration. Modern UI
 
 ### Failover simulator
 - `GET /api/failover` — current state (mode, remaining seconds)
-- `POST /api/failover` — body `{ "mode": "http-500" | "timeout" | "connection-reset" | "slow" | "off", "seconds": 60 }` (max 300, auto-recovers)
+- `POST /api/failover` — body `{ "mode": "connection-reset" | "timeout" | "off", "seconds": 60 }` (max 300, auto-recovers). `connection-reset` drops the TCP socket instantly; `timeout` stays silent past Akamai's 120s read timeout so the edge declares an Origin Timeout
 - `GET /api/failover/test` — the victim endpoint; healthy 200 unless a failure mode is active. Point Akamai Site Failover / origin health checks here.
 
 ### Akamai-specific

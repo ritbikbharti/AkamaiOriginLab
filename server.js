@@ -49,9 +49,12 @@ const ETAG_VALUE = `"${crypto.createHash('sha1').update(STARTUP_TIME.toISOString
 // Expiry is evaluated lazily on every read; restart resets to healthy.
 // Failures gate ONLY /api/failover/test and /api/cache/sie so the control
 // API, /api/log, and all pages stay reachable while "broken".
-const FAILOVER_MODES = ['http-500', 'timeout', 'connection-reset', 'slow'];
+const FAILOVER_MODES = ['connection-reset', 'timeout'];
 const FAILOVER_MAX_SECONDS = 300;
 const FAILOVER_DEFAULT_SECONDS = 60;
+// Hold a timeout-mode request silent past Akamai's default 120s read timeout
+// so the edge actually declares an Origin Timeout, then free the socket.
+const FAILOVER_TIMEOUT_HOLD_MS = 125000;
 let failover = { mode: 'off', expiresAt: 0 };
 
 // Live request log
@@ -203,43 +206,18 @@ function applyFailover(req, res) {
   const status = failoverStatus();
   if (!status.active) return false;
   switch (status.mode) {
-    case 'http-500':
-      sendJson(res, 500, {
-        error: 'Simulated origin failure',
-        mode: status.mode,
-        remainingSeconds: status.remainingSeconds
-      }, { 'Cache-Control': 'no-store' });
-      return true;
     case 'connection-reset':
       // statusCode 0 = "no HTTP response existed" in the request log
       res.statusCode = 0;
       res.socket.destroy();
       return true;
     case 'timeout': {
-      // Hang past typical edge read timeouts, then 504 so direct curls
-      // don't pin a socket forever.
+      // Stay completely silent so the edge hits its own read timeout (Akamai
+      // default 120s) and declares an Origin Timeout. Free the socket just
+      // past that so it doesn't pin forever; clear on early client/edge abort.
       const t = setTimeout(() => {
-        if (!res.writableEnded) {
-          sendJson(res, 504, {
-            error: 'Simulated origin timeout',
-            mode: status.mode
-          }, { 'Cache-Control': 'no-store' });
-        }
-      }, 35000);
-      req.on('close', () => clearTimeout(t));
-      return true;
-    }
-    case 'slow': {
-      const t = setTimeout(() => {
-        if (!res.writableEnded) {
-          sendJson(res, 200, {
-            status: 'ok',
-            mode: 'slow',
-            delayedMs: 15000,
-            generatedAt: new Date().toISOString()
-          }, { 'Cache-Control': 'no-store' });
-        }
-      }, 15000);
+        if (!res.writableEnded) res.socket.destroy();
+      }, FAILOVER_TIMEOUT_HOLD_MS);
       req.on('close', () => clearTimeout(t));
       return true;
     }

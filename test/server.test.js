@@ -272,20 +272,18 @@ test('GET /akamai/sureroute-test-object.html serves the SureRoute probe target',
   assert.ok(res.body.length >= 8192, `expected >=8 KB, got ${res.body.length} bytes`);
 });
 
-test('failover lifecycle: break with http-500, victim fails, restore heals', async () => {
+test('failover lifecycle: connection-reset breaks victim, restore heals', async () => {
   const healthy = await request('/api/failover/test');
   assert.equal(healthy.status, 200);
 
-  const set = await postJson('/api/failover', { mode: 'http-500', seconds: 60 });
+  const set = await postJson('/api/failover', { mode: 'connection-reset', seconds: 60 });
   assert.equal(set.status, 200);
   const setBody = JSON.parse(set.body);
   assert.equal(setBody.active, true);
-  assert.equal(setBody.mode, 'http-500');
+  assert.equal(setBody.mode, 'connection-reset');
   assert.ok(setBody.remainingSeconds > 0 && setBody.remainingSeconds <= 60);
 
-  const broken = await request('/api/failover/test');
-  assert.equal(broken.status, 500);
-  assert.equal(JSON.parse(broken.body).error, 'Simulated origin failure');
+  await assert.rejects(request('/api/failover/test'), /ECONNRESET|socket hang up/);
 
   const status = await request('/api/failover');
   assert.equal(JSON.parse(status.body).active, true);
@@ -300,25 +298,17 @@ test('failover lifecycle: break with http-500, victim fails, restore heals', asy
   assert.equal(restored.status, 200);
 });
 
-test('failover connection-reset destroys the socket', async () => {
-  await postJson('/api/failover', { mode: 'connection-reset', seconds: 60 });
-  await assert.rejects(request('/api/failover/test'), /ECONNRESET|socket hang up/);
-  await postJson('/api/failover', { mode: 'off' });
-});
-
 test('failover gates /api/cache/sie too', async () => {
-  await postJson('/api/failover', { mode: 'http-500', seconds: 60 });
-  const broken = await request('/api/cache/sie');
-  assert.equal(broken.status, 500);
+  await postJson('/api/failover', { mode: 'connection-reset', seconds: 60 });
+  await assert.rejects(request('/api/cache/sie'), /ECONNRESET|socket hang up/);
   await postJson('/api/failover', { mode: 'off' });
   const healed = await request('/api/cache/sie');
   assert.equal(healed.status, 200);
 });
 
 test('failover auto-expires without an explicit off', async () => {
-  await postJson('/api/failover', { mode: 'http-500', seconds: 1 });
-  const broken = await request('/api/failover/test');
-  assert.equal(broken.status, 500);
+  await postJson('/api/failover', { mode: 'connection-reset', seconds: 1 });
+  await assert.rejects(request('/api/failover/test'), /ECONNRESET|socket hang up/);
   await delay(1300);
   const healed = await request('/api/failover/test');
   assert.equal(healed.status, 200);
@@ -329,9 +319,9 @@ test('failover auto-expires without an explicit off', async () => {
 test('failover validation: bad mode 400, seconds clamped to 300', async () => {
   const bad = await postJson('/api/failover', { mode: 'bogus' });
   assert.equal(bad.status, 400);
-  assert.ok(JSON.parse(bad.body).validModes.includes('http-500'));
+  assert.ok(JSON.parse(bad.body).validModes.includes('connection-reset'));
 
-  const clamped = await postJson('/api/failover', { mode: 'http-500', seconds: 9999 });
+  const clamped = await postJson('/api/failover', { mode: 'connection-reset', seconds: 9999 });
   assert.ok(JSON.parse(clamped.body).remainingSeconds <= 300);
   await postJson('/api/failover', { mode: 'off' });
 });
