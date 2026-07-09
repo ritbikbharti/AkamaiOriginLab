@@ -57,6 +57,53 @@ const FAILOVER_DEFAULT_SECONDS = 60;
 const FAILOVER_TIMEOUT_HOLD_MS = 125000;
 let failover = { mode: 'off', expiresAt: 0 };
 
+// --- Auth: realistic sign-up / login / password-change endpoints as an
+// edge & WAF test target (throw SQLi/XSS at them, exercise Set-Cookie handling
+// at the edge, cache-bypass on authed routes). In-memory only, node:crypto
+// scrypt hashing, restart wipes all accounts and sessions. NOT real auth.
+const users = new Map();      // username -> { salt, hash, createdAt }
+const sessions = new Map();   // token -> { username, createdAt }
+const SESSION_MAX_AGE = 3600; // seconds
+
+function hashPassword(password, salt) {
+  return crypto.scryptSync(password, salt, 64).toString('hex');
+}
+function makeUser(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  return { salt, hash: hashPassword(password, salt), createdAt: new Date().toISOString() };
+}
+function passwordMatches(user, password) {
+  const candidate = Buffer.from(hashPassword(password, user.salt), 'hex');
+  const stored = Buffer.from(user.hash, 'hex');
+  return candidate.length === stored.length && crypto.timingSafeEqual(candidate, stored);
+}
+function parseCookies(req) {
+  const out = {};
+  const raw = req.headers.cookie;
+  if (!raw) return out;
+  for (const part of raw.split(';')) {
+    const i = part.indexOf('=');
+    if (i > -1) out[part.slice(0, i).trim()] = part.slice(i + 1).trim();
+  }
+  return out;
+}
+function sessionUser(req) {
+  const token = parseCookies(req).session;
+  if (!token) return null;
+  const s = sessions.get(token);
+  return s ? s.username : null;
+}
+// username: 3-32 chars, letters/digits/_.- ; password: 8-128 chars.
+function validCredentials(username, password) {
+  if (typeof username !== 'string' || !/^[A-Za-z0-9_.-]{3,32}$/.test(username)) {
+    return 'username must be 3-32 chars: letters, digits, _ . -';
+  }
+  if (typeof password !== 'string' || password.length < 8 || password.length > 128) {
+    return 'password must be 8-128 characters';
+  }
+  return null;
+}
+
 // Live request log
 const requestLog = [];
 let totalRequests = 0;
@@ -673,6 +720,88 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // --- Auth: sign up
+  if (pathname === '/api/auth/signup' && req.method === 'POST') {
+    try {
+      const body = await parseJsonBody(req);
+      const username = typeof body.username === 'string' ? body.username.trim() : '';
+      const err = validCredentials(username, body.password);
+      if (err) { sendJson(res, 400, { error: err }, { 'Cache-Control': 'no-store' }); return; }
+      if (users.has(username)) {
+        sendJson(res, 409, { error: 'Username already taken' }, { 'Cache-Control': 'no-store' });
+        return;
+      }
+      users.set(username, makeUser(body.password));
+      sendJson(res, 201, { message: 'Account created', username }, { 'Cache-Control': 'no-store' });
+    } catch (error) {
+      sendJson(res, 400, { error: error.message });
+    }
+    return;
+  }
+
+  // --- Auth: log in (sets HttpOnly session cookie)
+  if (pathname === '/api/auth/login' && req.method === 'POST') {
+    try {
+      const body = await parseJsonBody(req);
+      const username = typeof body.username === 'string' ? body.username.trim() : '';
+      const user = users.get(username);
+      // Generic 401 either way — no username enumeration.
+      if (!user || typeof body.password !== 'string' || !passwordMatches(user, body.password)) {
+        sendJson(res, 401, { error: 'Invalid username or password' }, { 'Cache-Control': 'no-store' });
+        return;
+      }
+      const token = crypto.randomBytes(32).toString('hex');
+      sessions.set(token, { username, createdAt: new Date().toISOString() });
+      const cookie = `session=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${SESSION_MAX_AGE}`;
+      sendJson(res, 200, { message: 'Logged in', username }, { 'Set-Cookie': cookie, 'Cache-Control': 'no-store' });
+    } catch (error) {
+      sendJson(res, 400, { error: error.message });
+    }
+    return;
+  }
+
+  // --- Auth: who am I (reads the session cookie)
+  if (pathname === '/api/auth/me' && req.method === 'GET') {
+    const username = sessionUser(req);
+    if (!username) { sendJson(res, 401, { error: 'Not authenticated' }, { 'Cache-Control': 'no-store' }); return; }
+    sendJson(res, 200, { username }, { 'Cache-Control': 'no-store' });
+    return;
+  }
+
+  // --- Auth: log out (clears the session)
+  if (pathname === '/api/auth/logout' && req.method === 'POST') {
+    const token = parseCookies(req).session;
+    if (token) sessions.delete(token);
+    const cookie = 'session=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0';
+    sendJson(res, 200, { message: 'Logged out' }, { 'Set-Cookie': cookie, 'Cache-Control': 'no-store' });
+    return;
+  }
+
+  // --- Auth: change password (requires an active session)
+  if (pathname === '/api/auth/password' && req.method === 'POST') {
+    try {
+      const username = sessionUser(req);
+      if (!username) { sendJson(res, 401, { error: 'Not authenticated' }, { 'Cache-Control': 'no-store' }); return; }
+      const user = users.get(username);
+      if (!user) { sendJson(res, 401, { error: 'Not authenticated' }, { 'Cache-Control': 'no-store' }); return; }
+      const body = await parseJsonBody(req);
+      if (typeof body.currentPassword !== 'string' || !passwordMatches(user, body.currentPassword)) {
+        sendJson(res, 403, { error: 'Current password is incorrect' }, { 'Cache-Control': 'no-store' });
+        return;
+      }
+      const err = validCredentials(username, body.newPassword);
+      if (err) { sendJson(res, 400, { error: err }, { 'Cache-Control': 'no-store' }); return; }
+      users.set(username, { ...makeUser(body.newPassword) });
+      // Invalidate all other sessions for this user; keep the current one.
+      const keep = parseCookies(req).session;
+      for (const [tok, s] of sessions) if (s.username === username && tok !== keep) sessions.delete(tok);
+      sendJson(res, 200, { message: 'Password changed' }, { 'Cache-Control': 'no-store' });
+    } catch (error) {
+      sendJson(res, 400, { error: error.message });
+    }
+    return;
+  }
+
   // --- Compressible payload
   if (pathname === '/api/compressible') {
     const requested = Number.parseInt(requestUrl.searchParams.get('bytes') || '20480', 10);
@@ -748,8 +877,10 @@ const server = http.createServer(async (req, res) => {
     sendJson(res, 404, {
       error: 'Route not found',
       availableRoutes: [
-        '/', '/cdn.html', '/responses.html', '/akamai.html', '/cors.html', '/tools.html',
+        '/', '/cdn.html', '/responses.html', '/akamai.html', '/cors.html', '/auth.html', '/tools.html',
         '/api/origin', '/api/log',
+        'POST /api/auth/signup', 'POST /api/auth/login', 'POST /api/auth/password',
+        'GET /api/auth/me', 'POST /api/auth/logout',
         '/api/time', '/api/popular-locations', '/api/fact', '/api/joke',
         '/api/cache/short', '/api/cache/long', '/api/cache/private',
         '/api/cache/etag', '/api/cache/no-cache',

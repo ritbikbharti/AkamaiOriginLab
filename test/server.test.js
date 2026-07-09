@@ -326,6 +326,73 @@ test('failover validation: bad mode 400, seconds clamped to 300', async () => {
   await postJson('/api/failover', { mode: 'off' });
 });
 
+test('auth: signup then full login / me / password-change / logout flow', async () => {
+  const u = 'testuser';
+  const signup = await postJson('/api/auth/signup', { username: u, password: 'initpass123' });
+  assert.equal(signup.status, 201);
+
+  // duplicate username rejected
+  const dup = await postJson('/api/auth/signup', { username: u, password: 'initpass123' });
+  assert.equal(dup.status, 409);
+
+  // weak password rejected
+  const weak = await postJson('/api/auth/signup', { username: 'weakling', password: 'short' });
+  assert.equal(weak.status, 400);
+
+  // bad login
+  const badLogin = await postJson('/api/auth/login', { username: u, password: 'wrongpass1' });
+  assert.equal(badLogin.status, 401);
+
+  // good login sets an HttpOnly session cookie
+  const login = await postJson('/api/auth/login', { username: u, password: 'initpass123' });
+  assert.equal(login.status, 200);
+  const setCookie = login.headers['set-cookie'][0];
+  assert.match(setCookie, /^session=/);
+  assert.match(setCookie, /HttpOnly/);
+  const cookie = setCookie.split(';')[0];
+
+  // me with cookie
+  const me = await request('/api/auth/me', { headers: { Cookie: cookie } });
+  assert.equal(me.status, 200);
+  assert.equal(JSON.parse(me.body).username, u);
+
+  // me without cookie
+  const anon = await request('/api/auth/me');
+  assert.equal(anon.status, 401);
+
+  // password change with wrong current password
+  const wrongCur = await request('/api/auth/password', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', Cookie: cookie },
+    body: JSON.stringify({ currentPassword: 'nope', newPassword: 'newpass123' })
+  });
+  assert.equal(wrongCur.status, 403);
+
+  // password change without a session
+  const noSession = await postJson('/api/auth/password', { currentPassword: 'initpass123', newPassword: 'newpass123' });
+  assert.equal(noSession.status, 401);
+
+  // password change success
+  const changed = await request('/api/auth/password', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', Cookie: cookie },
+    body: JSON.stringify({ currentPassword: 'initpass123', newPassword: 'newpass123' })
+  });
+  assert.equal(changed.status, 200);
+
+  // old password no longer works, new one does
+  const oldFail = await postJson('/api/auth/login', { username: u, password: 'initpass123' });
+  assert.equal(oldFail.status, 401);
+  const newOk = await postJson('/api/auth/login', { username: u, password: 'newpass123' });
+  assert.equal(newOk.status, 200);
+
+  // logout clears the session
+  const logout = await request('/api/auth/logout', { method: 'POST', headers: { Cookie: cookie } });
+  assert.equal(logout.status, 200);
+  const afterLogout = await request('/api/auth/me', { headers: { Cookie: cookie } });
+  assert.equal(afterLogout.status, 401);
+});
+
 test('Unknown route returns 404 JSON with availableRoutes', async () => {
   const res = await request('/api/nope');
   assert.equal(res.status, 404);

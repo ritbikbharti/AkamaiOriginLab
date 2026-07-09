@@ -13,6 +13,7 @@ A self-contained origin for testing Akamai (or any CDN) configuration. Modern UI
 - `/responses.html` — **Response Status** — force any HTTP status via `x-demo-status`, inspect the request headers seen by origin
 - `/akamai.html` — **Akamai** — True-Client-IP, EdgeScape geo decoding, Pragma debug
 - `/cors.html` — **CORS** — fully configurable `Access-Control-*` response headers, request builder, quick scenarios for wildcard / credentials-bug / preflight rejection / exposed headers, sandboxed-iframe runner for real `Origin: null` enforcement
+- `/auth.html` — **Auth** — sign-up / login / password-change as an edge & WAF test target (HttpOnly session cookie, injection-friendly form fields)
 - `/tools.html` — **Misc** — slow responses, redirects, Large File Object (LFO, up to 2 GB — includes 1.5 GB / 1.8 GB / 2 GB presets to bracket Akamai's 1.8 GB LFO threshold) with Range support, cookies, compression, SSE, live request log
 
 ## API
@@ -31,6 +32,13 @@ A self-contained origin for testing Akamai (or any CDN) configuration. Modern UI
 - `GET /api/failover` — current state (mode, remaining seconds)
 - `POST /api/failover` — body `{ "mode": "connection-reset" | "timeout" | "off", "seconds": 60 }` (max 300, auto-recovers). `connection-reset` drops the TCP socket instantly; `timeout` stays silent past Akamai's 120s read timeout so the edge declares an Origin Timeout
 - `GET /api/failover/test` — the victim endpoint; healthy 200 unless a failure mode is active. Point Akamai Site Failover / origin health checks here.
+
+### Auth (edge / WAF test target — in-memory, `node:crypto` scrypt, not real auth)
+- `POST /api/auth/signup` — body `{ username, password }`; username 3–32 chars, password 8–128. `201` created, `409` if taken
+- `POST /api/auth/login` — body `{ username, password }`; sets an `HttpOnly` session cookie. Generic `401` on bad credentials
+- `GET /api/auth/me` — returns `{ username }` from the session cookie, else `401`
+- `POST /api/auth/password` — body `{ currentPassword, newPassword }`; requires the session cookie. `403` if current is wrong
+- `POST /api/auth/logout` — clears the session
 
 ### Akamai-specific
 - `GET /api/akamai/client` — echoes `True-Client-IP`, `X-Forwarded-For`, `Via`, etc.
